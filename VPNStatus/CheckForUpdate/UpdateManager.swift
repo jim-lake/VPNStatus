@@ -8,9 +8,12 @@
 
 import Foundation
 import Cocoa
+import os
 
 @objc public final class UpdateManager: NSObject {
 	@objc public static let shared = UpdateManager()
+
+	private let log = Logger(subsystem: "org.timac.VPNStatus", category: "update")
 
 	let gitHubURL = URL(string: "https://api.github.com/repos/Timac/VPNStatus/releases")
 	let currentRelease: GitHubRelease
@@ -54,7 +57,7 @@ import Cocoa
 		let requestURL = URLRequest(url: gitHubURL)
 		URLSession.shared.dataTask(with: requestURL) { (data, response, error) in
 			if let error = error {
-				debugPrint("\(requestURL) returned: \(error)")
+				self.log.notice("\(requestURL) returned: \(error.localizedDescription, privacy: .public)")
 			} else if let data = data {
 				var lastRelease: GitHubRelease?
 				let jsonDecoder = JSONDecoder()
@@ -73,12 +76,12 @@ import Cocoa
 
 				if let lastRelease = lastRelease {
 					if self.currentRelease < lastRelease {
-						debugPrint("A new version is available")
+						self.log.info("A new version is available")
 
 						if let skippedVersion = skippedVersion {
 							let skippedRelease = GitHubRelease(tag_name: skippedVersion, prerelease: false, draft: false, body: nil)
 							if lastRelease <= skippedRelease {
-								debugPrint("Skip the new version")
+								self.log.info("Skip the new version")
 								DispatchQueue.main.async {
 									completion(nil, nil, nil)
 								}
@@ -100,7 +103,7 @@ import Cocoa
 					}
 				}
 			} else {
-				debugPrint("GitHub returned an empty data")
+				self.log.notice("GitHub returned an empty data")
 				DispatchQueue.main.async {
 					completion(nil, nil, nil)
 					return

@@ -464,6 +464,25 @@ cross the boundary are marked `@objc` (e.g. `UpdateManager`,
   `NSUserDefaults` calls scattered in the UI.
 - When adding a private-API symbol, declare it in `ACDefines.h` alongside the
   existing ones and cite the source (as the existing comments do).
+- **Logging uses `os_log` directly** (`os_log_fault`/`os_log_error`/`os_log`/
+  `os_log_info`/`os_log_debug`), with Swift using `os.Logger`. No `NSLog`, no
+  `debugPrint`, and no central logging wrapper — call the `os_log` API in place.
+  Levels have fixed meanings: `fault` = severe unexpected errors, `error` =
+  unexpected errors, `os_log` (notice) = expected errors, `info` = expected
+  flow that is useful to log, `debug` = verbose/low-value tracing. Interpolated
+  values use `%{public}@`. `printf`/`fprintf` in `vpnutil` stay as-is — that is
+  the CLI's actual stdout/stderr output, not logging.
+- **Extra layers of indirection are always disfavored.** Do not add a wrapper,
+  helper, factory, or abstraction "for no reason" — call the underlying API
+  directly. Only introduce an indirection when it earns its keep with a concrete,
+  present need.
+- **Comments are disfavored except for genuinely non-obvious information.** Do
+  not write file-header comments, block banners, or per-function description
+  comments. Never write a comment that restates what the code already says — a
+  redundant comment is always wrong because it must be kept in sync with the
+  code it duplicates, so it should never have existed. Comment only the things
+  the code cannot express: a surprising constraint, a hard-won macOS quirk, the
+  reason behind a non-obvious choice.
 
 ## Gotchas / known rough edges
 

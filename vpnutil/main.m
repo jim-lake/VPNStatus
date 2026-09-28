@@ -7,6 +7,7 @@
 //
 
 #import <Foundation/Foundation.h>
+#import <os/log.h>
 
 #import "ACDefines.h"
 #import "ACNEService.h"
@@ -123,12 +124,12 @@ int main(int argc, const char *argv[]) {
     // Make sure that the ACNEServicesManager singleton is created and load the configurations
     [[ACNEServicesManager sharedNEServicesManager] loadConfigurationsWithHandler:^(NSError *error) {
       if(error != nil) {
-        NSLog(@"Failed to load the configurations - %@", error);
+        os_log_error(OS_LOG_DEFAULT, "Failed to load the configurations - %{public}@", error);
       }
 
       neServices = [[ACNEServicesManager sharedNEServicesManager] neServices];
       if([neServices count] <= 0) {
-        NSLog(@"Could not find any VPN");
+        os_log(OS_LOG_DEFAULT, "Could not find any VPN");
       }
 
       for(ACNEService *neService in neServices) {
@@ -159,11 +160,11 @@ int main(int argc, const char *argv[]) {
     NSDate *timeoutDate = [NSDate dateWithTimeIntervalSinceNow:1.0];
     while(keepRunning && [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:timeoutDate]) {
       timeoutDate = [NSDate dateWithTimeIntervalSinceNow:1.0];
-      // NSLog(@"Waiting...");
+      os_log_debug(OS_LOG_DEFAULT, "Waiting...");
 
       // Timeout after 10s
       if(startWaiting + 10.0 < CFAbsoluteTimeGetCurrent()) {
-        // NSLog(@"Timeout...");
+        os_log_debug(OS_LOG_DEFAULT, "Timeout...");
         keepRunning = NO;
       }
 
@@ -171,7 +172,7 @@ int main(int argc, const char *argv[]) {
       if(startWaiting + 1.0 < CFAbsoluteTimeGetCurrent()) {
         if(needServiceName) {
           if(foundNEService != nil && (foundNEService.gotInitialSessionStatus)) {
-            // NSLog(@"Found NEService and session state");
+            os_log_debug(OS_LOG_DEFAULT, "Found NEService and session state");
             keepRunning = NO;
           }
         } else {
@@ -184,7 +185,7 @@ int main(int argc, const char *argv[]) {
           }
         }
       } else {
-        // NSLog(@"Need to wait more...");
+        os_log_debug(OS_LOG_DEFAULT, "Need to wait more...");
       }
     }
 
@@ -233,28 +234,28 @@ int main(int argc, const char *argv[]) {
       }
     } else if(foundNEService) {
       SCNetworkConnectionStatus currentState = foundNEService.state;
-      // NSLog(@"Got status %@", GetDescriptionForSCNetworkConnectionStatus(currentState));
+      os_log_debug(OS_LOG_DEFAULT, "Got status %{public}@", GetDescriptionForSCNetworkConnectionStatus(currentState));
       if(statusService) {
         printf("%s %s\n", [foundNEService.name UTF8String], [GetDescriptionForSCNetworkConnectionStatus(foundNEService.state) UTF8String]);
       } else if(shouldStartService) {
         if(currentState == kSCNetworkConnectionDisconnected) {
           // Connect
           [foundNEService connect];
-          NSLog(@"%@ has been started", vpnName);
+          os_log_info(OS_LOG_DEFAULT, "%{public}@ has been started", vpnName);
         } else {
-          NSLog(@"%@ was not started because it was in the state '%@'", vpnName, GetDescriptionForSCNetworkConnectionStatus(currentState));
+          os_log(OS_LOG_DEFAULT, "%{public}@ was not started because it was in the state '%{public}@'", vpnName, GetDescriptionForSCNetworkConnectionStatus(currentState));
         }
       } else {
         if(currentState == kSCNetworkConnectionConnected) {
           // Disconnect
           [foundNEService disconnect];
-          NSLog(@"%@ has been stopped", vpnName);
+          os_log_info(OS_LOG_DEFAULT, "%{public}@ has been stopped", vpnName);
         } else {
-          NSLog(@"%@ was not stopped because it was in the state '%@'", vpnName, GetDescriptionForSCNetworkConnectionStatus(currentState));
+          os_log(OS_LOG_DEFAULT, "%{public}@ was not stopped because it was in the state '%{public}@'", vpnName, GetDescriptionForSCNetworkConnectionStatus(currentState));
         }
       }
     } else {
-      NSLog(@"Could not find %@", vpnName);
+      os_log(OS_LOG_DEFAULT, "Could not find %{public}@", vpnName);
     }
   }
 

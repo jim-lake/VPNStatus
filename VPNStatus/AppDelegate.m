@@ -8,6 +8,8 @@
 
 #import "AppDelegate.h"
 
+#import <os/log.h>
+
 #import "ACDefines.h"
 #import "ACNEService.h"
 #import "ACNEServicesManager.h"
@@ -35,7 +37,7 @@
   // Make sure that the ACNEServicesManager singleton is created and load the configurations
   [[ACNEServicesManager sharedNEServicesManager] loadConfigurationsWithHandler:^(NSError *error) {
     if(error != nil) {
-      NSLog(@"Failed to load the configurations - %@", error);
+      os_log_error(OS_LOG_DEFAULT, "Failed to load the configurations - %{public}@", error);
     }
 
     if(applyAutoConnect) {

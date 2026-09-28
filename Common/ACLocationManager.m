@@ -8,6 +8,8 @@
 
 #import "ACLocationManager.h"
 
+#import <os/log.h>
+
 NSString *const kACLocationManagerAuthorizationDidChange = @"kACLocationManagerAuthorizationDidChange";
 
 @interface ACLocationManager () <CLLocationManagerDelegate>
@@ -50,7 +52,7 @@ NSString *const kACLocationManagerAuthorizationDidChange = @"kACLocationManagerA
 
   case kCLAuthorizationStatusRestricted:
   case kCLAuthorizationStatusDenied:
-    NSLog(@"Location Services access is not authorized");
+    os_log(OS_LOG_DEFAULT, "Location Services access is not authorized");
     break;
 
   case kCLAuthorizationStatusAuthorizedAlways:
@@ -62,7 +64,7 @@ NSString *const kACLocationManagerAuthorizationDidChange = @"kACLocationManagerA
 #pragma mark - CLLocationManagerDelegate
 
 - (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager {
-  NSLog(@"locationManagerDidChangeAuthorization %d", manager.authorizationStatus);
+  os_log_info(OS_LOG_DEFAULT, "locationManagerDidChangeAuthorization %d", manager.authorizationStatus);
 
   // Post a notification to refresh the UI
   dispatch_async(dispatch_get_main_queue(), ^{

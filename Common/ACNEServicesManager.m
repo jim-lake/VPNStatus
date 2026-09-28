@@ -8,6 +8,8 @@
 
 #import "ACNEServicesManager.h"
 
+#import <os/log.h>
+
 #import "ACDefines.h"
 #import "ACNEService.h"
 #import "ACPreferences.h"
@@ -40,7 +42,7 @@
   [[NEConfigurationManager sharedManager] loadConfigurationsWithCompletionQueue:[self neServiceQueue]
                                                                         handler:^(NSArray<NEConfiguration *> *neConfigurations, NSError *error) {
                                                                           if(error != nil) {
-                                                                            NSLog(@"ERROR loading configurations - %@", error);
+                                                                            os_log_error(OS_LOG_DEFAULT, "ERROR loading configurations - %{public}@", error);
                                                                             return;
                                                                           }
 
