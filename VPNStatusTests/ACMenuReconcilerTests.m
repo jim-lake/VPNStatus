@@ -1,6 +1,6 @@
 //
 //  ACMenuReconcilerTests.m
-//  VPNAppTests
+//  VPNStatusTests
 //
 //  Behavior-focused tests for the in-place menu reconciler. These deliberately
 //  assert *properties* of reconciliation (identity/reuse, ordering, removal,

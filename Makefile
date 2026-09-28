@@ -18,9 +18,8 @@ CONFIGURATION  := Debug
 DESTINATION    := platform=macOS
 
 APP_SCHEME     := VPNStatus
-UNIT_SCHEME    := VPNApp
+UNIT_SCHEME    := VPNStatus
 UITEST_SCHEME  := VPNStatusUITests
-CLI_TARGET     := vpnutil
 
 # Disable code signing everywhere — the app works unsigned.
 UNSIGNED_FLAGS := CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
@@ -28,7 +27,7 @@ UNSIGNED_FLAGS := CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_A
 XCODEBUILD     := xcodebuild -project $(PROJECT) -configuration $(CONFIGURATION)
 
 # Format over all first-party Objective-C sources (skip build output & DerivedData).
-FORMAT_DIRS    := Common VPNStatus VPNApp vpnutil VPNAppTests
+FORMAT_DIRS    := Common VPNStatus VPNStatusTests
 CLANG_FORMAT   := clang-format
 
 # Pretty-print xcodebuild output with xcpretty if it is installed; otherwise
@@ -46,7 +45,7 @@ SHELL := /bin/bash
 # Meta
 # ---------------------------------------------------------------------------
 .DEFAULT_GOAL := help
-.PHONY: help build build-app build-cli build-all rebuild clean \
+.PHONY: help build build-app build-all rebuild clean \
         test test-unit test-ui \
         format format-check format-setup \
         run stop restart app-path \
@@ -68,16 +67,15 @@ build: build-app ## Build the menu bar app (alias for build-app)
 build-app: ## Build the VPNStatus menu bar app
 	$(XCODEBUILD) -scheme $(APP_SCHEME) $(UNSIGNED_FLAGS) build $(PIPE)
 
-build-cli: ## Build the vpnutil CLI tool
-	$(XCODEBUILD) -target $(CLI_TARGET) $(UNSIGNED_FLAGS) build $(PIPE)
-
-build-all: build-app build-cli ## Build the app and the CLI
+build-all: build-app ## Build everything (currently just the app)
 
 rebuild: clean build-all ## Clean, then build everything
 
-clean: ## Delete build products for this project
+clean: ## Delete build output (build/, DerivedData) and run xcodebuild clean
+	@echo "Removing local build output..."
+	rm -rf build DerivedData
+	rm -rf $(HOME)/Library/Developer/Xcode/DerivedData/VPN-*
 	$(XCODEBUILD) -scheme $(APP_SCHEME) clean $(PIPE)
-	$(XCODEBUILD) -scheme $(UNIT_SCHEME) clean $(PIPE)
 
 # ---------------------------------------------------------------------------
 # Test
@@ -87,12 +85,17 @@ test: test-unit ## Run the unit tests (alias for test-unit)
 test-unit: ## Run unit tests (GitHubRelease + ACMenuReconciler)
 	$(XCODEBUILD) -scheme $(UNIT_SCHEME) -destination '$(DESTINATION)' $(UNSIGNED_FLAGS) test $(PIPE)
 
-test-ui: build-cli ## Run end-to-end UI tests (requires the GUI/Aqua session, not SSH)
+test-ui: ## Run end-to-end UI tests (requires the GUI/Aqua session, not SSH)
 	@if [ -n "$$SSH_CONNECTION" ] || [ "$$(launchctl managername 2>/dev/null)" = "Background" ]; then \
 		echo "error: UI tests must run from the logged-in desktop (Aqua) session, not over SSH."; \
 		echo "       Open Terminal on the Mac's desktop and run 'make test-ui' there."; \
 		exit 1; \
 	fi
+	@command -v vpnutil >/dev/null 2>&1 || { \
+		echo "note: 'vpnutil' not found on PATH. The connect/disconnect toggle test"; \
+		echo "      will be skipped. Install it for full coverage:"; \
+		echo "        brew install timac/vpnstatus/vpnutil"; \
+	}
 	$(XCODEBUILD) -scheme $(UITEST_SCHEME) -destination '$(DESTINATION)' $(UNSIGNED_FLAGS) test $(PIPE)
 
 # ---------------------------------------------------------------------------

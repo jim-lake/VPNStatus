@@ -6,21 +6,26 @@ together, and the conventions to follow when making changes.
 
 ## What this project is
 
-VPNStatus is a macOS application that replicates parts of the built-in macOS
-VPN status menu. It lets the user list VPN services, connect/disconnect, and
-optionally auto-connect. The repository ships **three products** built from a
-mostly-shared codebase, plus a test bundle:
+VPNStatus is a macOS menu-bar application that replicates parts of the built-in
+macOS VPN status menu. It lets the user list VPN services, connect/disconnect,
+and optionally auto-connect. The repository ships **one app** plus its test
+bundles:
 
 | Target        | Type                | Purpose |
 |---------------|---------------------|---------|
-| `VPNStatus`   | Menu bar app (`LSUIElement`) | The primary, actively maintained app. Lives in the macOS menu bar. |
-| `VPNApp`      | Windowed app        | An older/simpler windowed variant. Shares the `Common` core but has its own UI. |
-| `vpnutil`     | CLI tool            | Command-line utility: `start`/`stop`/`list`/`status` for a VPN by name. |
-| `VPNAppTests` | Unit test bundle    | XCTest target: `GitHubRelease` version parsing + `ACMenuReconciler` behavior. |
+| `VPNStatus`   | Menu bar app (`LSUIElement`) | The one and only app. Lives in the macOS menu bar. |
+| `VPNStatusTests` | Unit test bundle | XCTest target hosted on `VPNStatus`: `GitHubRelease` version parsing + `ACMenuReconciler` behavior. |
 | `VPNStatusUITests` | UI test bundle | XCUITest target that drives the real `VPNStatus` menu-bar app end to end (status item, menu contents, connect/disconnect, quit). |
 
-The core VPN logic is shared across all three products via the `Common/`
-directory.
+> **`vpnutil` is no longer part of this repo.** The old in-tree `vpnutil` CLI
+> target and its `VPNUtil` dylib have been removed. `vpnutil` still exists as an
+> independent tool — install it from Homebrew
+> (`brew install timac/vpnstatus/vpnutil`) and use it for command-line checks
+> and independent verification of VPN state (see "How to ACTUALLY check whether
+> the machine has a VPN").
+>
+> **The old windowed `VPNApp` variant has also been removed.** `VPNStatus` is the
+> only app; all shared VPN logic lives in `Common/`.
 
 ## Language & platform
 
@@ -43,7 +48,6 @@ baked in) and the code formatter; run `make help` to list targets. You can use
 ```bash
 # Via the Makefile (preferred — handles code-signing flags for you):
 make build        # build the menu bar app (VPNStatus)
-make build-cli    # build the vpnutil CLI tool
 make test         # run the unit tests
 make format       # clang-format all Obj-C sources in place
 make format-check # verify formatting (CI-friendly, non-mutating)
@@ -53,23 +57,21 @@ make run          # build + launch the app, leaving it running
 # Build the menu bar app
 xcodebuild -project VPN.xcodeproj -scheme VPNStatus -configuration Debug build
 
-# Build the CLI tool
-xcodebuild -project VPN.xcodeproj -scheme VPNApp -configuration Debug build
-
-# Run the unit tests. NOTE: the VPNAppTests bundle is attached to the VPNApp
-# scheme (its TEST_HOST is VPNApp), not the VPNStatus scheme. Run tests via:
-xcodebuild -project VPN.xcodeproj -scheme VPNApp -destination 'platform=macOS' test
+# Run the unit tests. The VPNStatusTests bundle is hosted on the VPNStatus app
+# (TEST_HOST = VPNStatus) and runs under the VPNStatus scheme:
+xcodebuild -project VPN.xcodeproj -scheme VPNStatus -destination 'platform=macOS' test
 ```
 
-The `VPNAppTests` unit bundle covers `GitHubRelease` version comparison (Swift)
+The `VPNStatusTests` unit bundle covers `GitHubRelease` version comparison (Swift)
 and the menu reconciler (`ACMenuReconcilerTests.m`, Obj-C). The reconciler's
 `.m` is compiled into both the `VPNStatus` app target and the test target so the
 tests link its symbols directly without depending on the host app; the test
 target's `HEADER_SEARCH_PATHS` includes `$(SRCROOT)/Common`.
 
 Shared schemes live in `VPN.xcodeproj/xcshareddata/xcschemes/`
-(`VPNStatus.xcscheme`, `VPNApp.xcscheme`, `VPNStatusUITests.xcscheme`). After
-changing code, prefer building the affected scheme before presenting results.
+(`VPNStatus.xcscheme`, `VPNStatusUITests.xcscheme`); the `VPNStatus` scheme's
+test action runs the `VPNStatusTests` bundle. After changing code, prefer
+building the affected scheme before presenting results.
 
 ### Code signing: build unsigned
 
@@ -81,8 +83,8 @@ chasing certificates:
 CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 ```
 
-Append those flags to any `xcodebuild` invocation (unit tests, UI tests,
-`vpnutil`). Do not assume test failures are signing-related.
+Append those flags to any `xcodebuild` invocation (unit tests, UI tests). Do
+not assume test failures are signing-related.
 
 ### UI tests (`VPNStatusUITests`) — real end-to-end
 
@@ -94,11 +96,13 @@ actions, and verifies the real effect (VPN connect/disconnect, app quit).
 # UI tests — MUST run in the logged-in GUI session (see pitfall #1 below), unsigned.
 xcodebuild -project VPN.xcodeproj -scheme VPNStatusUITests -destination 'platform=macOS' \
   CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO test
-
-# The toggle test shells out to vpnutil to read real VPN state, so build it too:
-xcodebuild -project VPN.xcodeproj -target vpnutil -configuration Debug build \
-  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 ```
+
+The toggle test (`testClickingServiceTogglesConnection`) verifies the real VPN
+state by shelling out to `vpnutil`. `vpnutil` is **not** built from this repo any
+more — install it from Homebrew (`brew install timac/vpnstatus/vpnutil`). The
+test looks for it at `/opt/homebrew/bin/vpnutil` or `/usr/local/bin/vpnutil`; if
+it is absent the toggle test is skipped (the other four still run).
 
 The five tests:
 
@@ -147,15 +151,62 @@ Supporting production changes for testability (in `VPNStatus/AppDelegate.m`):
 stable `identifier`s on the static `Settings…`/`Quit` items (`static.settings` /
 `static.quit`), and the `UITEST_AUTOMATION` distributed-notification hook.
 
-### CLI smoke test against the real VPN
+### How to ACTUALLY check whether the machine has a VPN (READ THIS FIRST)
 
-```bash
-./build/Debug/vpnutil list                 # JSON of {name, status}
-./build/Debug/vpnutil status ares-staging  # one line: "<name> <Status>"
-```
+**Do not use `scutil --nc list`, `scutil --nc status`, or
+`networksetup -listallnetworkservices` to decide whether a VPN exists or what
+its state is. They cannot see the VPNs this project manages.** The VPNs here are
+**NetworkExtension (`NEConfiguration`) VPNs** — IKEv2 personal VPNs and VPN
+clients that install a NE configuration. macOS's built-in CLI tooling does
+**not** enumerate these:
 
-This exercises the shared `Common/` core end to end (configuration loading via
-`NEConfigurationManager` → `ACNEService` → `ne_session_get_status`).
+- `scutil --nc list` → prints only the header line with **no services**, even
+  when a VPN is configured and actively connected. `scutil --nc status "<name>"`
+  answers `No Service`. This is a long-standing, still-open Apple limitation:
+  `scutil` does not support IKEv2 / NE-based VPN services (Apple bug
+  rdar://41950946, filed by this project's original author — see
+  <https://blog.timac.org/2018/0719-vpnstatus/> and
+  <https://blog.timac.org/2018/0717-macos-vpn-architecture/>). Empty output is
+  **not** "no VPN"; the tool is simply blind to these VPNs.
+- `networksetup -listallnetworkservices` → same blind spot; no VPN entries.
+- `ifconfig | grep utun` → shows `utunN` interfaces, but these are created by
+  many things (other VPNs, Handoff/AWDL, Back to My Mac, etc.). You cannot map a
+  `utunN` interface to a named VPN or a real connection state from this. Useless
+  for the question "is VPN X connected?".
+
+There is **no** stock macOS command that reports these VPNs — that gap is the
+entire reason this project reaches into the private `NEConfigurationManager` /
+`ne_session_get_status` APIs (see `ACDefines.h`). The correct sources of truth
+are things that run that same code path:
+
+1. **`vpnutil` (recommended for independent verification).** `vpnutil` is a
+   small CLI over the exact same `NEConfiguration` / `ne_session_get_status`
+   path. **It is no longer part of this repo** — install it independently from
+   Homebrew and use it to verify VPN state from the command line:
+
+   ```bash
+   brew tap timac/vpnstatus
+   brew install timac/vpnstatus/vpnutil
+
+   vpnutil list             # JSON of {name, status} for every NE VPN
+   vpnutil status <name>    # one line: "<name> <Status>"
+   ```
+
+   On the current dev machine `vpnutil list` reports the real VPN
+   `ares-staging` = `Connected` — the VPN that `scutil`/`networksetup` claim
+   does not exist. This is the go-to way to check real VPN state and to
+   independently confirm what the app/tests observe.
+
+2. **The `VPNStatus` app itself.** The running app's menu shows the per-service
+   row with a checkmark and a `Connect`/`Disconnect <name>` title, and the
+   `UITEST_AUTOMATION` distributed-notification hook (see the UI tests section)
+   reports the real `ne_session` status programmatically. This is the source of
+   truth the UI tests assert against.
+
+If you see "empty" output from `scutil`/`networksetup` and are tempted to
+conclude "this machine has no VPN" — **stop**. You are using a tool that
+structurally cannot see NE/IKEv2 VPNs. Use brew's `vpnutil` (or ask the app)
+instead.
 
 ### Testing pitfalls (mistakes made while getting UI tests working)
 
@@ -199,7 +250,7 @@ Recorded so the next agent does not repeat them:
 The dependency flow is roughly:
 
 ```
-UI layer (AppDelegate / PreferencesUI / vpnutil main.m)
+UI layer (AppDelegate / PreferencesUI)
         │  reads/writes
         ▼
 ACPreferences  (NSUserDefaults wrapper, singleton)
@@ -222,7 +273,7 @@ notifications, not delegates or callbacks (see "Notifications" below).
 
 ## Directory / file guide
 
-### `Common/` — shared core (used by all three products)
+### `Common/` — shared core (used by the app and its tests)
 
 - **`ACDefines.h`** — The linchpin of the whole app. Declares the **private
   Apple APIs** that macOS does not expose publicly:
@@ -362,32 +413,14 @@ notifications, not delegates or callbacks (see "Notifications" below).
   **`Base.lproj/*.xib`**, **`Assets.xcassets`** (menu bar icons:
   `VPNStatusItemOn/Off/Pause`).
 
-### `VPNApp/` — the windowed variant
-
-Simpler, older app with a single window (`MainMenu.xib`). Its `AppDelegate`
-drives an `NSPopUpButton` of services plus connect/toggle/auto-connect
-controls, reusing the same `Common` core. Does **not** include the update
-checker, preferences window, or location handling. Terminates when the last
-window closes.
-
-### `vpnutil/` — command-line tool
-
-`main.m` is a self-contained CLI. It:
-1. Parses `start|stop|list|status [VPN name]`.
-2. Loads configurations via `ACNEServicesManager`.
-3. Manually pumps an `NSRunLoop` (min 1s, max 10s timeout) waiting until each
-   relevant service reports an initial session status (`gotInitialSessionStatus`).
-4. For `list`, prints a JSON document of `{name, status}`; for `status`, prints
-   one line; for `start`/`stop`, transitions the session if it's in the right
-   state.
-
-### `VPNAppTests/`
+### `VPNStatusTests/`
 
 - `GitHubReleaseTests.swift` — exercises `GitHubRelease` ordering/equality,
   including prerelease/draft handling.
 - `ACMenuReconcilerTests.m` — behavior tests for `ACMenuReconciler` (in-place
-  menu updates: reuse/insert/remove/reorder, region isolation). Runs under the
-  `VPNApp` scheme (see "How to build and test").
+  menu updates: reuse/insert/remove/reorder, region isolation). Hosted on the
+  `VPNStatus` app and run under the `VPNStatus` scheme (see "How to build and
+  test").
 
 ### `VPNStatusUITests/`
 
@@ -470,8 +503,8 @@ cross the boundary are marked `@objc` (e.g. `UpdateManager`,
   Levels have fixed meanings: `fault` = severe unexpected errors, `error` =
   unexpected errors, `os_log` (notice) = expected errors, `info` = expected
   flow that is useful to log, `debug` = verbose/low-value tracing. Interpolated
-  values use `%{public}@`. `printf`/`fprintf` in `vpnutil` stay as-is — that is
-  the CLI's actual stdout/stderr output, not logging.
+  values use `%{public}@`. No `printf`/`fprintf` — there is no CLI in this repo
+  any more.
 - **Extra layers of indirection are always disfavored.** Do not add a wrapper,
   helper, factory, or abstraction "for no reason" — call the underlying API
   directly. Only introduce an indirection when it earns its keep with a concrete,
@@ -506,9 +539,6 @@ crappy"):
 - **`UpdateManager.checkForUpdate` completion is not always called** on some
   early-return paths (e.g. decode failure), which can leave the "up to date"
   alert flow inconsistent.
-- **Two parallel apps (`VPNStatus` and `VPNApp`)** duplicate app-delegate
-  logic. `VPNStatus` is the maintained one; changes to shared behavior should
-  usually target `Common/` so both benefit.
 - **Version parsing** in `GitHubRelease` only understands numeric
   `major.minor.patch`; non-numeric tag components are dropped.
 
@@ -522,4 +552,3 @@ crappy"):
 - Preferences window UI → `VPNStatus/PreferencesUI/*` + matching XIB in
   `VPNStatus/Base.lproj/`.
 - Update checker → `VPNStatus/CheckForUpdate/*` (Swift).
-- CLI behavior → `vpnutil/main.m`.

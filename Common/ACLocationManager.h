@@ -1,6 +1,6 @@
 //
 //  ACLocationManager.h
-//  VPNApp
+//  VPN
 //
 //  Created by Alexandre Colucci on 30.09.2023.
 //  Copyright © 2023 Timac. All rights reserved.

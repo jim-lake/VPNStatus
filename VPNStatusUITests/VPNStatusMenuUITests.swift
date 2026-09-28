@@ -190,7 +190,7 @@ final class VPNStatusMenuUITests: XCTestCase {
 		dismissMenu()
 
 		guard let vpnutil = vpnutilPath() else {
-			throw XCTSkip("vpnutil binary not found; build it to run the connect/disconnect test.")
+			throw XCTSkip("vpnutil not found; install it with `brew install timac/vpnstatus/vpnutil` to run the connect/disconnect test.")
 		}
 
 		// Sanity: the CLI agrees with the menu about the starting state.
@@ -230,22 +230,15 @@ final class VPNStatusMenuUITests: XCTestCase {
 
 	// MARK: - VPN state via the vpnutil CLI
 
-	// Locates the vpnutil binary built alongside the project.
+	// Locates the vpnutil binary. vpnutil is NOT part of this repo any more; it
+	// is installed independently from Homebrew (`brew install
+	// timac/vpnstatus/vpnutil`) and used here purely for independent
+	// verification of the real VPN state.
 	private func vpnutilPath() -> String? {
 		let candidates = [
-			"/Users/jlake/sandbox/VPNStatus/build/Debug/vpnutil",
+			"/opt/homebrew/bin/vpnutil", // Apple-silicon Homebrew
+			"/usr/local/bin/vpnutil",    // Intel Homebrew
 		]
-		// Also check the same DerivedData products dir as the test build.
-		if let bundleURL = Bundle(for: type(of: self)).bundleURL as URL? {
-			// .../Debug/VPNStatusUITests-Runner.app/Contents/PlugIns/VPNStatusUITests.xctest
-			let productsDir = bundleURL
-				.deletingLastPathComponent() // PlugIns
-				.deletingLastPathComponent() // Contents
-				.deletingLastPathComponent() // Runner.app
-				.deletingLastPathComponent() // Debug
-			let derived = productsDir.appendingPathComponent("vpnutil").path
-			if FileManager.default.isExecutableFile(atPath: derived) { return derived }
-		}
 		return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
 	}
 
