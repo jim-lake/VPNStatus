@@ -14,9 +14,8 @@
 + (ACPreferencesWindowController *)sharedWindowController;
 
 @property (nonatomic, strong) NSArray<ACPreferencesWindowControllerProtocol> *viewControllers;
-@property (weak, nonatomic) NSViewController <ACPreferencesWindowControllerProtocol> *selectedViewController;
+@property (weak, nonatomic) NSViewController<ACPreferencesWindowControllerProtocol> *selectedViewController;
 
--(instancetype)initPreferencesWindow;
+- (instancetype)initPreferencesWindow;
 
 @end
-

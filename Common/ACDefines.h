@@ -27,7 +27,7 @@ typedef struct ne_session_t *ne_session_t;
 // Name found in SCNetworkConnection.c:
 // See https://opensource.apple.com/source/configd/configd-963/SystemConfiguration.fproj/SCNetworkConnection.c.auto.html
 //
-#define NESessionTypeVPN	1
+#define NESessionTypeVPN 1
 
 
 NS_ASSUME_NONNULL_BEGIN
@@ -79,7 +79,7 @@ extern SCNetworkConnectionStatus SCNetworkConnectionGetStatusFromNEStatus(ne_ses
 
 @interface NEVPN : NSObject
 
-@property (copy) NEVPNProtocol * protocol;
+@property (copy) NEVPNProtocol *protocol;
 
 @end
 
@@ -91,9 +91,9 @@ extern SCNetworkConnectionStatus SCNetworkConnectionGetStatusFromNEStatus(ne_ses
 
 @interface NEConfiguration : NSObject
 
-@property (readonly) NSUUID * identifier;
-@property (copy) NSString * name;
-@property (copy) NEVPN * VPN;
+@property (readonly) NSUUID *identifier;
+@property (copy) NSString *name;
+@property (copy) NEVPN *VPN;
 
 @end
 
@@ -106,9 +106,8 @@ extern SCNetworkConnectionStatus SCNetworkConnectionGetStatusFromNEStatus(ne_ses
 @interface NEConfigurationManager : NSObject
 
 + (id)sharedManager;
-- (void)loadConfigurationsWithCompletionQueue:(dispatch_queue_t)completionQueue handler:(void (^)(NSArray<NEConfiguration *> * _Nullable configurations, NSError * _Nullable error))handler;
+- (void)loadConfigurationsWithCompletionQueue:(dispatch_queue_t)completionQueue handler:(void (^)(NSArray<NEConfiguration *> *_Nullable configurations, NSError *_Nullable error))handler;
 
 @end
 
 NS_ASSUME_NONNULL_END
-

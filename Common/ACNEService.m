@@ -11,125 +11,100 @@
 
 @implementation ACNEService
 
-- (instancetype)initWithConfiguration:(NEConfiguration *)inConfiguration
-{
-    self = [super init];
-    if (self)
-    {
-        _configuration = inConfiguration;
-		_gotInitialSessionStatus = NO;
-		
-        // Get the configuration identifier to initialize the ne_session_t
-        NSUUID *uuid = [inConfiguration identifier];
-		uuid_t uuidBytes;
-		[uuid getUUIDBytes:uuidBytes];
-		
-        // Create the ne_session
-        _session = ne_session_create(uuidBytes, NESessionTypeVPN);
-		
-		// Setup the callbacks
-        [self setupEventCallback];
-        [self refreshSession];
-    }
-    
-    return self;
+- (instancetype)initWithConfiguration:(NEConfiguration *)inConfiguration {
+  self = [super init];
+  if(self) {
+    _configuration = inConfiguration;
+    _gotInitialSessionStatus = NO;
+
+    // Get the configuration identifier to initialize the ne_session_t
+    NSUUID *uuid = [inConfiguration identifier];
+    uuid_t uuidBytes;
+    [uuid getUUIDBytes:uuidBytes];
+
+    // Create the ne_session
+    _session = ne_session_create(uuidBytes, NESessionTypeVPN);
+
+    // Setup the callbacks
+    [self setupEventCallback];
+    [self refreshSession];
+  }
+
+  return self;
 }
 
-- (void)dealloc
-{
-	ne_session_set_event_handler(_session, [[ACNEServicesManager sharedNEServicesManager] neServiceQueue], ^(ne_session_event_t event, void *event_data)
-	{
-		// Nothing
-	});
-	
-	// Cancel and release the session
-	ne_session_cancel(_session);
-	ne_session_release(_session);
+- (void)dealloc {
+  ne_session_set_event_handler(_session, [[ACNEServicesManager sharedNEServicesManager] neServiceQueue], ^(ne_session_event_t event, void *event_data){
+                                           // Nothing
+                                         });
+
+  // Cancel and release the session
+  ne_session_cancel(_session);
+  ne_session_release(_session);
 }
 
--(NSString *)name
-{
-	return _configuration.name;
+- (NSString *)name {
+  return _configuration.name;
 }
 
--(NSString *)serverAddress
-{
-	NSString *serverAddress = _configuration.VPN.protocol.serverAddress;
-	return ([serverAddress length] > 0) ? serverAddress : @"Unknown";
+- (NSString *)serverAddress {
+  NSString *serverAddress = _configuration.VPN.protocol.serverAddress;
+  return ([serverAddress length] > 0) ? serverAddress : @"Unknown";
 }
 
--(NSString *)protocol
-{
-	NEVPNProtocol *protocol = _configuration.VPN.protocol;
-	if([protocol isKindOfClass:[NEVPNProtocolIKEv2 class]])
-	{
-		return @"IKEv2";
-	}
-	else if([protocol isKindOfClass:[NEVPNProtocolIPSec class]])
-	{
-		return @"IPSec";
-	}
-	else if([[protocol className] isEqualToString:@"NEVPNProtocolL2TP"])
-	{
-		// The NEVPNProtocolL2TP is a private class of the public NetworkExtension.framework
-		return @"L2TP";
-	}
-	
-	// Fallback to catch future protocols?
-	NSString *className = [protocol className];
-	if([className hasPrefix:@"NEVPNProtocol"])
-	{
-		return [className substringFromIndex:[@"NEVPNProtocol" length]];
-	}
-	
-	
-	return @"Unknown";
+- (NSString *)protocol {
+  NEVPNProtocol *protocol = _configuration.VPN.protocol;
+  if([protocol isKindOfClass:[NEVPNProtocolIKEv2 class]]) {
+    return @"IKEv2";
+  } else if([protocol isKindOfClass:[NEVPNProtocolIPSec class]]) {
+    return @"IPSec";
+  } else if([[protocol className] isEqualToString:@"NEVPNProtocolL2TP"]) {
+    // The NEVPNProtocolL2TP is a private class of the public NetworkExtension.framework
+    return @"L2TP";
+  }
+
+  // Fallback to catch future protocols?
+  NSString *className = [protocol className];
+  if([className hasPrefix:@"NEVPNProtocol"]) {
+    return [className substringFromIndex:[@"NEVPNProtocol" length]];
+  }
+
+
+  return @"Unknown";
 }
 
--(SCNetworkConnectionStatus)state
-{
-	if(self.gotInitialSessionStatus)
-	{
-		return SCNetworkConnectionGetStatusFromNEStatus(self.sessionStatus);
-	}
-	else
-	{
-		return kSCNetworkConnectionInvalid;
-	}
+- (SCNetworkConnectionStatus)state {
+  if(self.gotInitialSessionStatus) {
+    return SCNetworkConnectionGetStatusFromNEStatus(self.sessionStatus);
+  } else {
+    return kSCNetworkConnectionInvalid;
+  }
 }
 
--(void)setupEventCallback
-{
-	ne_session_set_event_handler(_session, [[ACNEServicesManager sharedNEServicesManager] neServiceQueue], ^(ne_session_event_t event, void *event_data)
-	{
-		[self refreshSession];
-	});
+- (void)setupEventCallback {
+  ne_session_set_event_handler(_session, [[ACNEServicesManager sharedNEServicesManager] neServiceQueue], ^(ne_session_event_t event, void *event_data) {
+    [self refreshSession];
+  });
 }
 
--(void)refreshSession
-{
-	ne_session_get_status(_session, [[ACNEServicesManager sharedNEServicesManager] neServiceQueue], ^(ne_session_status_t status)
-	{
-		dispatch_async(dispatch_get_main_queue(), ^
-		{
-			self.sessionStatus = status;
-			self.gotInitialSessionStatus = YES;
-			
-			// Post a notification to refresh the UI
-			[[NSNotificationCenter defaultCenter] postNotificationName:kSessionStateChangedNotification object:nil];
-		});
-	});
+- (void)refreshSession {
+  ne_session_get_status(_session, [[ACNEServicesManager sharedNEServicesManager] neServiceQueue], ^(ne_session_status_t status) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      self.sessionStatus = status;
+      self.gotInitialSessionStatus = YES;
+
+      // Post a notification to refresh the UI
+      [[NSNotificationCenter defaultCenter] postNotificationName:kSessionStateChangedNotification object:nil];
+    });
+  });
 }
 
--(void)connect
-{
-	ne_session_start(_session);
+- (void)connect {
+  ne_session_start(_session);
 }
 
--(void)disconnect
-{
-	ne_session_stop(_session);
+- (void)disconnect {
+  ne_session_stop(_session);
 }
 
 @end
-

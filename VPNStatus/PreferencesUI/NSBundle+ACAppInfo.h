@@ -9,14 +9,13 @@
 
 @interface NSBundle (ACAppInfo)
 
-+(nonnull NSString *)acBundleIdentifier;
-+(nonnull NSString *)acAppName;
++ (nonnull NSString *)acBundleIdentifier;
++ (nonnull NSString *)acAppName;
 
-+(nonnull NSString *)acAppShortVersion;
-+(nonnull NSString *)acAppVersion;
-+(nonnull NSString *)acAppDisplayVersion;
++ (nonnull NSString *)acAppShortVersion;
++ (nonnull NSString *)acAppVersion;
++ (nonnull NSString *)acAppDisplayVersion;
 
-+(nonnull NSString *)acAppNameAndDisplayVersion;
++ (nonnull NSString *)acAppNameAndDisplayVersion;
 
 @end
-

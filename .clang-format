@@ -1,0 +1,110 @@
+# clang-format configuration for VPNStatus.
+#
+# The project is normalized to 2-space indentation (no tabs). Brace and spacing
+# choices:
+#   - Attach braces: the opening brace stays on the same line (`if(x) {`,
+#     `void f() {`, `} else {`).
+#   - No space between a control keyword and its "(": `if(...)`, `for(...)`,
+#     `switch(...)`, `while(...)`.
+#   - Pointers/refs bind to the name: `NSString *foo`.
+#   - `case` labels are not indented relative to `switch`.
+#
+# Two identical sections are provided: `ObjC` (used for .m files) and `Cpp`
+# (used for .h files, which clang-format classifies as C/C++). Keep them in
+# sync — clang-format has no cross-language inheritance.
+
+# ===========================================================================
+# Objective-C (.m)
+# ===========================================================================
+---
+Language:        ObjC
+BasedOnStyle:    LLVM
+
+UseTab:          Never
+TabWidth:        2
+IndentWidth:     2
+ContinuationIndentWidth: 2
+AccessModifierOffset: -2
+NamespaceIndentation: None
+
+# Opening brace always on the same line (K&R / "Attach" style).
+BreakBeforeBraces: Attach
+
+SpaceBeforeParens: Never
+SpaceAfterCStyleCast: false
+SpaceBeforeAssignmentOperators: true
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceAfterTemplateKeyword: false
+SpaceBeforeRangeBasedForLoopColon: true
+
+PointerAlignment: Right
+DerivePointerAlignment: false
+
+IndentCaseLabels: false
+
+ObjCBlockIndentWidth: 2
+ObjCSpaceAfterProperty: true
+ObjCSpaceBeforeProtocolList: true
+ObjCBreakBeforeNestedBlockParam: true
+
+ColumnLimit:     0
+
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
+AlignTrailingComments: true
+KeepEmptyLinesAtTheStartOfBlocks: true
+MaxEmptyLinesToKeep: 2
+SortIncludes: Never
+IndentPPDirectives: None
+
+# ===========================================================================
+# C / C++ / Objective-C headers (.h) — must mirror the ObjC section above.
+# ===========================================================================
+---
+Language:        Cpp
+BasedOnStyle:    LLVM
+
+UseTab:          Never
+TabWidth:        2
+IndentWidth:     2
+ContinuationIndentWidth: 2
+AccessModifierOffset: -2
+NamespaceIndentation: None
+
+# Opening brace always on the same line (K&R / "Attach" style).
+BreakBeforeBraces: Attach
+
+SpaceBeforeParens: Never
+SpaceAfterCStyleCast: false
+SpaceBeforeAssignmentOperators: true
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceAfterTemplateKeyword: false
+SpaceBeforeRangeBasedForLoopColon: true
+
+PointerAlignment: Right
+DerivePointerAlignment: false
+
+IndentCaseLabels: false
+
+ObjCBlockIndentWidth: 2
+ObjCSpaceAfterProperty: true
+ObjCSpaceBeforeProtocolList: true
+ObjCBreakBeforeNestedBlockParam: true
+
+ColumnLimit:     0
+
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
+AlignTrailingComments: true
+KeepEmptyLinesAtTheStartOfBlocks: true
+MaxEmptyLinesToKeep: 2
+SortIncludes: Never
+IndentPPDirectives: None

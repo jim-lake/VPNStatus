@@ -11,97 +11,85 @@
 //
 // Preferences keys
 //
-NSString * const kServicesPrefKey = @"Services";
-NSString * const kServiceIdentifierKey = @"Identifier";
-NSString * const kServiceAlwaysConnectedKey = @"AlwaysConnected";
-NSString * const kServiceIgnoredSSIDsKey = @"IgnoredSSIDs";
-NSString * const kServiceIgnoredVPNsKey = @"IgnoredVPNs";
+NSString *const kServicesPrefKey = @"Services";
+NSString *const kServiceIdentifierKey = @"Identifier";
+NSString *const kServiceAlwaysConnectedKey = @"AlwaysConnected";
+NSString *const kServiceIgnoredSSIDsKey = @"IgnoredSSIDs";
+NSString *const kServiceIgnoredVPNsKey = @"IgnoredVPNs";
 
-NSString * const kAlwaysConnectedRetryDelayPrefKey = @"AlwaysConnectedRetryDelay";
+NSString *const kAlwaysConnectedRetryDelayPrefKey = @"AlwaysConnectedRetryDelay";
 
-NSString * const kDisabledCheckForUpdatesAutomaticallyPrefKey = @"DisabledCheckForUpdatesAutomatically";
-NSString * const kSingleAutoConnectPrefKey = @"SingleAutoConnect";
-NSString * const kMenuBarImageTypePrefKey = @"MenuBarImageType";
+NSString *const kDisabledCheckForUpdatesAutomaticallyPrefKey = @"DisabledCheckForUpdatesAutomatically";
+NSString *const kSingleAutoConnectPrefKey = @"SingleAutoConnect";
+NSString *const kMenuBarImageTypePrefKey = @"MenuBarImageType";
 
-NSString * const kACConfigurationDidChange = @"kACConfigurationDidChange";
-NSString * const kACMenuBarImageDidChange = @"kACMenuBarImageDidChange";
+NSString *const kACConfigurationDidChange = @"kACConfigurationDidChange";
+NSString *const kACMenuBarImageDidChange = @"kACMenuBarImageDidChange";
 
 
 @implementation ACPreferences
 
 
-+ (ACPreferences *)sharedPreferences
-{
-	static ACPreferences *SsharedPreferences = nil;
-	if(SsharedPreferences == nil)
-	{
-		SsharedPreferences = [[ACPreferences alloc] init];
-	}
++ (ACPreferences *)sharedPreferences {
+  static ACPreferences *SsharedPreferences = nil;
+  if(SsharedPreferences == nil) {
+    SsharedPreferences = [[ACPreferences alloc] init];
+  }
 
-	return SsharedPreferences;
+  return SsharedPreferences;
 }
 
--(NSArray<NSString *>*)alwaysConnectedServicesIdentifiers
-{
-	NSMutableArray<NSString *>* outAlwaysConnectedServicesIdentifiers = [[NSMutableArray alloc] init];
+- (NSArray<NSString *> *)alwaysConnectedServicesIdentifiers {
+  NSMutableArray<NSString *> *outAlwaysConnectedServicesIdentifiers = [[NSMutableArray alloc] init];
 
-	// Get the list of services that should always been connected
-	NSArray <NSDictionary *>*services = [[NSUserDefaults standardUserDefaults] arrayForKey:kServicesPrefKey];
-	for(NSDictionary *service in services)
-	{
-		NSString *serviceIdentifier = service[kServiceIdentifierKey];
-		BOOL isAlwaysConnected = [service[kServiceAlwaysConnectedKey] boolValue];
-		if(isAlwaysConnected && [serviceIdentifier length] > 0)
-		{
-			[outAlwaysConnectedServicesIdentifiers addObject:serviceIdentifier];
-		}
-	}
+  // Get the list of services that should always been connected
+  NSArray<NSDictionary *> *services = [[NSUserDefaults standardUserDefaults] arrayForKey:kServicesPrefKey];
+  for(NSDictionary *service in services) {
+    NSString *serviceIdentifier = service[kServiceIdentifierKey];
+    BOOL isAlwaysConnected = [service[kServiceAlwaysConnectedKey] boolValue];
+    if(isAlwaysConnected && [serviceIdentifier length] > 0) {
+      [outAlwaysConnectedServicesIdentifiers addObject:serviceIdentifier];
+    }
+  }
 
-	return outAlwaysConnectedServicesIdentifiers;
+  return outAlwaysConnectedServicesIdentifiers;
 }
 
--(void)setAlwaysConnected:(BOOL)inAlwaysConnected forServicesIdentifier:(NSString *)inServiceIdentifier
-{
-	BOOL serviceFound = NO;
-	NSMutableArray <NSDictionary *>*services = [[[NSUserDefaults standardUserDefaults] arrayForKey:kServicesPrefKey] mutableCopy];
-	if(services == nil)
-	{
-		services = [[NSMutableArray alloc] init];
-	}
+- (void)setAlwaysConnected:(BOOL)inAlwaysConnected forServicesIdentifier:(NSString *)inServiceIdentifier {
+  BOOL serviceFound = NO;
+  NSMutableArray<NSDictionary *> *services = [[[NSUserDefaults standardUserDefaults] arrayForKey:kServicesPrefKey] mutableCopy];
+  if(services == nil) {
+    services = [[NSMutableArray alloc] init];
+  }
 
-	// Use a copy to avoid looping through an array that is being modified during the loop
-	for(NSDictionary *service in [services copy])
-	{
-		NSString *serviceIdentifier = service[kServiceIdentifierKey];
-		if([serviceIdentifier isEqualToString:inServiceIdentifier])
-		{
-			NSMutableDictionary *updatedServiceDictionary = [service mutableCopy];
-			updatedServiceDictionary[kServiceAlwaysConnectedKey] = [NSNumber numberWithBool:inAlwaysConnected];
+  // Use a copy to avoid looping through an array that is being modified during the loop
+  for(NSDictionary *service in [services copy]) {
+    NSString *serviceIdentifier = service[kServiceIdentifierKey];
+    if([serviceIdentifier isEqualToString:inServiceIdentifier]) {
+      NSMutableDictionary *updatedServiceDictionary = [service mutableCopy];
+      updatedServiceDictionary[kServiceAlwaysConnectedKey] = [NSNumber numberWithBool:inAlwaysConnected];
 
-			[services removeObject:service];
-			[services addObject:updatedServiceDictionary];
+      [services removeObject:service];
+      [services addObject:updatedServiceDictionary];
 
-			serviceFound = YES;
-		}
-		else if(inAlwaysConnected && [self singleAutoConnect])
-		{
-			NSMutableDictionary *updatedServiceDictionary = [service mutableCopy];
-			updatedServiceDictionary[kServiceAlwaysConnectedKey] = [NSNumber numberWithBool:false];
+      serviceFound = YES;
+    } else if(inAlwaysConnected && [self singleAutoConnect]) {
+      NSMutableDictionary *updatedServiceDictionary = [service mutableCopy];
+      updatedServiceDictionary[kServiceAlwaysConnectedKey] = [NSNumber numberWithBool:false];
 
-			[services removeObject:service];
-			[services addObject:updatedServiceDictionary];
-		}
-	}
+      [services removeObject:service];
+      [services addObject:updatedServiceDictionary];
+    }
+  }
 
-	if(!serviceFound)
-	{
-		NSMutableDictionary *serviceDictionary = [[NSMutableDictionary alloc] init];
-		serviceDictionary[kServiceIdentifierKey] = inServiceIdentifier;
-		serviceDictionary[kServiceAlwaysConnectedKey] = [NSNumber numberWithBool:inAlwaysConnected];
-		[services addObject:serviceDictionary];
-	}
+  if(!serviceFound) {
+    NSMutableDictionary *serviceDictionary = [[NSMutableDictionary alloc] init];
+    serviceDictionary[kServiceIdentifierKey] = inServiceIdentifier;
+    serviceDictionary[kServiceAlwaysConnectedKey] = [NSNumber numberWithBool:inAlwaysConnected];
+    [services addObject:serviceDictionary];
+  }
 
-	[[NSUserDefaults standardUserDefaults] setObject:services forKey:kServicesPrefKey];
+  [[NSUserDefaults standardUserDefaults] setObject:services forKey:kServicesPrefKey];
 }
 
 /**
@@ -113,35 +101,27 @@ NSString * const kACMenuBarImageDidChange = @"kACMenuBarImageDidChange";
 
  Also note that the SSID is ignored irrespective of the VPN service.
  */
--(NSArray<NSString *> *)ignoredSSIDs
-{
-	NSString *ignoredSSIDsString = [[NSUserDefaults standardUserDefaults] stringForKey:kServiceIgnoredSSIDsKey];
-	if([ignoredSSIDsString length] > 0)
-	{
-		return [ignoredSSIDsString componentsSeparatedByString:@","];
-	}
-	else
-	{
-		return @[];
-	}
+- (NSArray<NSString *> *)ignoredSSIDs {
+  NSString *ignoredSSIDsString = [[NSUserDefaults standardUserDefaults] stringForKey:kServiceIgnoredSSIDsKey];
+  if([ignoredSSIDsString length] > 0) {
+    return [ignoredSSIDsString componentsSeparatedByString:@","];
+  } else {
+    return @[];
+  }
 }
 
--(void)setIgnoredSSIDs:(NSArray<NSString *> *)ignoredSSIDs
-{
-	if([ignoredSSIDs count] <= 0)
-	{
-		[[NSUserDefaults standardUserDefaults] removeObjectForKey:kServiceIgnoredSSIDsKey];
-	}
-	else
-	{
-		NSString *value = [ignoredSSIDs componentsJoinedByString:@","];
-		[[NSUserDefaults standardUserDefaults] setValue:value forKey:kServiceIgnoredSSIDsKey];
-	}
+- (void)setIgnoredSSIDs:(NSArray<NSString *> *)ignoredSSIDs {
+  if([ignoredSSIDs count] <= 0) {
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:kServiceIgnoredSSIDsKey];
+  } else {
+    NSString *value = [ignoredSSIDs componentsJoinedByString:@","];
+    [[NSUserDefaults standardUserDefaults] setValue:value forKey:kServiceIgnoredSSIDsKey];
+  }
 
-	// Post a notification to reload the VPN configurations and refresh the UI
-	dispatch_async(dispatch_get_main_queue(), ^{
-		[[NSNotificationCenter defaultCenter] postNotificationName:kACConfigurationDidChange object:nil];
-	});
+  // Post a notification to reload the VPN configurations and refresh the UI
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [[NSNotificationCenter defaultCenter] postNotificationName:kACConfigurationDidChange object:nil];
+  });
 }
 
 /**
@@ -150,144 +130,122 @@ NSString * const kACMenuBarImageDidChange = @"kACMenuBarImageDidChange";
 
  By default, the Little Snitch Content Filter Configuration is hidden
  */
--(NSArray<NSString *> *)ignoredVPNs
-{
-	NSString *ignoredVPNsString = [[NSUserDefaults standardUserDefaults] stringForKey:kServiceIgnoredVPNsKey];
-	if(ignoredVPNsString == nil)
-	{
-		// Default preference
-		// Don't display the Little Snitch Content Filter Configuration
-		ignoredVPNsString = @"Little Snitch";
-	}
+- (NSArray<NSString *> *)ignoredVPNs {
+  NSString *ignoredVPNsString = [[NSUserDefaults standardUserDefaults] stringForKey:kServiceIgnoredVPNsKey];
+  if(ignoredVPNsString == nil) {
+    // Default preference
+    // Don't display the Little Snitch Content Filter Configuration
+    ignoredVPNsString = @"Little Snitch";
+  }
 
-	return [ignoredVPNsString componentsSeparatedByString:@","];
+  return [ignoredVPNsString componentsSeparatedByString:@","];
 }
 
--(void)setIgnoredVPNs:(NSArray<NSString *> *)ignoredVPNs
-{
-	if([ignoredVPNs count] <= 0)
-	{
-		[[NSUserDefaults standardUserDefaults] removeObjectForKey:kServiceIgnoredVPNsKey];
-	}
-	else
-	{
-		NSString *value = [ignoredVPNs componentsJoinedByString:@","];
-		[[NSUserDefaults standardUserDefaults] setValue:value forKey:kServiceIgnoredVPNsKey];
-	}
+- (void)setIgnoredVPNs:(NSArray<NSString *> *)ignoredVPNs {
+  if([ignoredVPNs count] <= 0) {
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:kServiceIgnoredVPNsKey];
+  } else {
+    NSString *value = [ignoredVPNs componentsJoinedByString:@","];
+    [[NSUserDefaults standardUserDefaults] setValue:value forKey:kServiceIgnoredVPNsKey];
+  }
 
-	// Post a notification to reload the VPN configurations and refresh the UI
-	dispatch_async(dispatch_get_main_queue(), ^{
-		[[NSNotificationCenter defaultCenter] postNotificationName:kACConfigurationDidChange object:nil];
-	});
+  // Post a notification to reload the VPN configurations and refresh the UI
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [[NSNotificationCenter defaultCenter] postNotificationName:kACConfigurationDidChange object:nil];
+  });
 }
 
--(NSInteger)alwaysConnectedRetryDelay
-{
-	NSInteger retryDelay = [[NSUserDefaults standardUserDefaults] integerForKey:kAlwaysConnectedRetryDelayPrefKey];
-	if(retryDelay <= 0)
-	{
-		// Default is 120s
-		retryDelay = 120;
-	}
+- (NSInteger)alwaysConnectedRetryDelay {
+  NSInteger retryDelay = [[NSUserDefaults standardUserDefaults] integerForKey:kAlwaysConnectedRetryDelayPrefKey];
+  if(retryDelay <= 0) {
+    // Default is 120s
+    retryDelay = 120;
+  }
 
-	return retryDelay;
+  return retryDelay;
 }
 
--(void)setAlwaysConnectedRetryDelay:(NSInteger)retryDelay
-{
-	if (retryDelay > 0 && retryDelay <= 240)
-	{
-		[[NSUserDefaults standardUserDefaults] setInteger:retryDelay forKey:kAlwaysConnectedRetryDelayPrefKey];
-	}
+- (void)setAlwaysConnectedRetryDelay:(NSInteger)retryDelay {
+  if(retryDelay > 0 && retryDelay <= 240) {
+    [[NSUserDefaults standardUserDefaults] setInteger:retryDelay forKey:kAlwaysConnectedRetryDelayPrefKey];
+  }
 }
 
--(BOOL)disabledCheckForUpdatesAutomatically
-{
-	return [[NSUserDefaults standardUserDefaults] boolForKey:kDisabledCheckForUpdatesAutomaticallyPrefKey];
+- (BOOL)disabledCheckForUpdatesAutomatically {
+  return [[NSUserDefaults standardUserDefaults] boolForKey:kDisabledCheckForUpdatesAutomaticallyPrefKey];
 }
 
--(void)setDisabledCheckForUpdatesAutomatically:(BOOL)inValue
-{
-	[[NSUserDefaults standardUserDefaults] setBool:inValue forKey:kDisabledCheckForUpdatesAutomaticallyPrefKey];
+- (void)setDisabledCheckForUpdatesAutomatically:(BOOL)inValue {
+  [[NSUserDefaults standardUserDefaults] setBool:inValue forKey:kDisabledCheckForUpdatesAutomaticallyPrefKey];
 }
 
--(BOOL)singleAutoConnect
-{
-	return [[NSUserDefaults standardUserDefaults] boolForKey:kSingleAutoConnectPrefKey];
+- (BOOL)singleAutoConnect {
+  return [[NSUserDefaults standardUserDefaults] boolForKey:kSingleAutoConnectPrefKey];
 }
 
--(void)setSingleAutoConnect:(BOOL)inValue
-{
-	[[NSUserDefaults standardUserDefaults] setBool:inValue forKey:kSingleAutoConnectPrefKey];
+- (void)setSingleAutoConnect:(BOOL)inValue {
+  [[NSUserDefaults standardUserDefaults] setBool:inValue forKey:kSingleAutoConnectPrefKey];
 }
 
--(MenuBarImageType)menuBarImageType
-{
-	return [[NSUserDefaults standardUserDefaults] integerForKey:kMenuBarImageTypePrefKey];
+- (MenuBarImageType)menuBarImageType {
+  return [[NSUserDefaults standardUserDefaults] integerForKey:kMenuBarImageTypePrefKey];
 }
 
--(void)setMenuBarImageType:(MenuBarImageType)menuBarImageType
-{
-	[[NSUserDefaults standardUserDefaults] setInteger:menuBarImageType forKey:kMenuBarImageTypePrefKey];
+- (void)setMenuBarImageType:(MenuBarImageType)menuBarImageType {
+  [[NSUserDefaults standardUserDefaults] setInteger:menuBarImageType forKey:kMenuBarImageTypePrefKey];
 
-	// Post a notification to reload the VPN configurations and refresh the UI
-	dispatch_async(dispatch_get_main_queue(), ^{
-		[[NSNotificationCenter defaultCenter] postNotificationName:kACMenuBarImageDidChange object:nil];
-	});
+  // Post a notification to reload the VPN configurations and refresh the UI
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [[NSNotificationCenter defaultCenter] postNotificationName:kACMenuBarImageDidChange object:nil];
+  });
 }
 
-+(NSImage *)menuBarImageForState:(MenuBarImageState)inState
-{
-	MenuBarImageType menuBarImageType = [[ACPreferences sharedPreferences] menuBarImageType];
-	return [ACPreferences menuBarImageForState:inState andType:menuBarImageType];
++ (NSImage *)menuBarImageForState:(MenuBarImageState)inState {
+  MenuBarImageType menuBarImageType = [[ACPreferences sharedPreferences] menuBarImageType];
+  return [ACPreferences menuBarImageForState:inState andType:menuBarImageType];
 }
 
-+(NSImage *)menuBarImageForState:(MenuBarImageState)inState andType:(MenuBarImageType)inType
-{
-	switch (inState)
-	{
-		case MenuBarImageState_Off:
-			switch (inType)
-			{
-				case MenuBarImageType_Cloud:
-					return [NSImage imageWithSystemSymbolName:@"xmark.icloud" accessibilityDescription:nil];
-					break;
++ (NSImage *)menuBarImageForState:(MenuBarImageState)inState andType:(MenuBarImageType)inType {
+  switch(inState) {
+  case MenuBarImageState_Off:
+    switch(inType) {
+    case MenuBarImageType_Cloud:
+      return [NSImage imageWithSystemSymbolName:@"xmark.icloud" accessibilityDescription:nil];
+      break;
 
-				default:
-					return [NSImage imageNamed:@"VPNStatusItemOffImage"];
-					break;
-			}
-			break;
+    default:
+      return [NSImage imageNamed:@"VPNStatusItemOffImage"];
+      break;
+    }
+    break;
 
-		case MenuBarImageState_On:
-			switch (inType)
-			{
-				case MenuBarImageType_Cloud:
-					return [NSImage imageWithSystemSymbolName:@"checkmark.icloud.fill" accessibilityDescription:nil];
-					break;
+  case MenuBarImageState_On:
+    switch(inType) {
+    case MenuBarImageType_Cloud:
+      return [NSImage imageWithSystemSymbolName:@"checkmark.icloud.fill" accessibilityDescription:nil];
+      break;
 
-				default:
-					return [NSImage imageNamed:@"VPNStatusItemOnImage"];
-					break;
-			}
-			break;
+    default:
+      return [NSImage imageNamed:@"VPNStatusItemOnImage"];
+      break;
+    }
+    break;
 
-		case MenuBarImageState_Pause:
-			switch (inType)
-			{
-				case MenuBarImageType_Cloud:
-					return [NSImage imageWithSystemSymbolName:@"arrow.triangle.2.circlepath.icloud" accessibilityDescription:nil];
-					break;
+  case MenuBarImageState_Pause:
+    switch(inType) {
+    case MenuBarImageType_Cloud:
+      return [NSImage imageWithSystemSymbolName:@"arrow.triangle.2.circlepath.icloud" accessibilityDescription:nil];
+      break;
 
-				default:
-					return [NSImage imageNamed:@"VPNStatusItemPauseImage"];
-					break;
-			}
-			break;
+    default:
+      return [NSImage imageNamed:@"VPNStatusItemPauseImage"];
+      break;
+    }
+    break;
 
-		default:
-			break;
-	}
+  default:
+    break;
+  }
 }
 
 @end

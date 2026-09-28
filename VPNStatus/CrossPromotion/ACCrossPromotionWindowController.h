@@ -13,4 +13,3 @@
 + (ACCrossPromotionWindowController *)sharedWindowController;
 
 @end
-

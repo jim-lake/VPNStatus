@@ -9,15 +9,14 @@
 #import <Foundation/Foundation.h>
 #import <CoreLocation/CoreLocation.h>
 
-extern NSString * const kACLocationManagerAuthorizationDidChange;
+extern NSString *const kACLocationManagerAuthorizationDidChange;
 
 @interface ACLocationManager : NSObject
 
-+ (ACLocationManager*) sharedLocationManager;
++ (ACLocationManager *)sharedLocationManager;
 
 - (CLAuthorizationStatus)authorizationStatus;
 
 - (void)requestAlwaysAuthorizationIfNeeded;
 
 @end
-

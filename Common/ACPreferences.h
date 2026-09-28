@@ -9,8 +9,8 @@
 
 #import <Cocoa/Cocoa.h>
 
-extern NSString * const kACConfigurationDidChange;
-extern NSString * const kACMenuBarImageDidChange;
+extern NSString *const kACConfigurationDidChange;
+extern NSString *const kACMenuBarImageDidChange;
 
 @interface ACPreferences : NSObject
 
@@ -23,48 +23,48 @@ extern NSString * const kACMenuBarImageDidChange;
 /**
  Return the list of VPN service identifiers that have been set to auto connect
  */
--(NSArray<NSString *>*)alwaysConnectedServicesIdentifiers;
+- (NSArray<NSString *> *)alwaysConnectedServicesIdentifiers;
 
 /**
  Return the list of ignored SSIDs for the current service identifier
  */
--(NSArray<NSString *>*)ignoredSSIDs;
--(void)setIgnoredSSIDs:(NSArray<NSString *> *)ignoredSSIDs;
+- (NSArray<NSString *> *)ignoredSSIDs;
+- (void)setIgnoredSSIDs:(NSArray<NSString *> *)ignoredSSIDs;
 
 
 /**
  Return the list of VPN to ignore
  */
--(NSArray<NSString *>*)ignoredVPNs;
--(void)setIgnoredVPNs:(NSArray<NSString *> *)ignoredVPNs;
+- (NSArray<NSString *> *)ignoredVPNs;
+- (void)setIgnoredVPNs:(NSArray<NSString *> *)ignoredVPNs;
 
 
 /**
  Enable or disable auto connect for the VPN service
  */
--(void)setAlwaysConnected:(BOOL)inAlwaysConnected forServicesIdentifier:(NSString *)inServiceIdentifier;
+- (void)setAlwaysConnected:(BOOL)inAlwaysConnected forServicesIdentifier:(NSString *)inServiceIdentifier;
 
 
 /**
  How often should we retry to connect to the VPN?
  Default is 120s
  */
--(NSInteger)alwaysConnectedRetryDelay;
--(void)setAlwaysConnectedRetryDelay:(NSInteger)retryDelay;
+- (NSInteger)alwaysConnectedRetryDelay;
+- (void)setAlwaysConnectedRetryDelay:(NSInteger)retryDelay;
 
 
 /**
  Disable the check for updates
  */
--(BOOL)disabledCheckForUpdatesAutomatically;
--(void)setDisabledCheckForUpdatesAutomatically:(BOOL)inValue;
+- (BOOL)disabledCheckForUpdatesAutomatically;
+- (void)setDisabledCheckForUpdatesAutomatically:(BOOL)inValue;
 
 
 /**
  Enable auto connecting to max one service.
  */
--(BOOL)singleAutoConnect;
--(void)setSingleAutoConnect:(BOOL)inValue;
+- (BOOL)singleAutoConnect;
+- (void)setSingleAutoConnect:(BOOL)inValue;
 
 
 /**
@@ -72,20 +72,19 @@ extern NSString * const kACMenuBarImageDidChange;
  */
 
 typedef NS_ENUM(NSInteger, MenuBarImageType) {
-	MenuBarImageType_Colors,
-	MenuBarImageType_Cloud
+  MenuBarImageType_Colors,
+  MenuBarImageType_Cloud
 };
 
 typedef NS_ENUM(NSInteger, MenuBarImageState) {
-	MenuBarImageState_Off,
-	MenuBarImageState_On,
-	MenuBarImageState_Pause
+  MenuBarImageState_Off,
+  MenuBarImageState_On,
+  MenuBarImageState_Pause
 };
 
--(MenuBarImageType)menuBarImageType;
--(void)setMenuBarImageType:(MenuBarImageType)menuBarImageType;
-+(NSImage *)menuBarImageForState:(MenuBarImageState)inState;
-+(NSImage *)menuBarImageForState:(MenuBarImageState)inState andType:(MenuBarImageType)inType;
+- (MenuBarImageType)menuBarImageType;
+- (void)setMenuBarImageType:(MenuBarImageType)menuBarImageType;
++ (NSImage *)menuBarImageForState:(MenuBarImageState)inState;
++ (NSImage *)menuBarImageForState:(MenuBarImageState)inState andType:(MenuBarImageType)inType;
 
 @end
-

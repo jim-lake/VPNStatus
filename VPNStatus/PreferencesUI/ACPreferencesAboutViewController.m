@@ -18,59 +18,49 @@
 
 @implementation ACPreferencesAboutViewController
 
-- (instancetype)initViewController
-{
-	self = [super initWithNibName:@"ACPreferencesAboutView" bundle:nil];
-	if (self)
-	{
-	}
+- (instancetype)initViewController {
+  self = [super initWithNibName:@"ACPreferencesAboutView" bundle:nil];
+  if(self) {
+  }
 
-	return self;
+  return self;
 }
 
-- (void)viewDidLoad
-{
-	[super viewDidLoad];
+- (void)viewDidLoad {
+  [super viewDidLoad];
 
-	NSString *appDisplayVersion = [NSBundle acAppDisplayVersion];
-	if([appDisplayVersion length] > 0)
-	{
-		[self.versionLabel setStringValue:[NSString stringWithFormat:@"Version %@", appDisplayVersion]];
-	}
+  NSString *appDisplayVersion = [NSBundle acAppDisplayVersion];
+  if([appDisplayVersion length] > 0) {
+    [self.versionLabel setStringValue:[NSString stringWithFormat:@"Version %@", appDisplayVersion]];
+  }
 
-	NSCalendar *calendar = [NSCalendar currentCalendar];
-	NSDateComponents *components = [calendar components:NSCalendarUnitYear fromDate:[NSDate date]];
-	NSInteger year = [components year];
-	if(year > 0)
-	{
-		NSString *copyrightFormatString = @"Copyright © 2018-%d Alexandre Colucci\nhttps://blog.timac.org";
-		[self.copyrightLabel setStringValue:[NSString stringWithFormat:copyrightFormatString, year]];
-	}
+  NSCalendar *calendar = [NSCalendar currentCalendar];
+  NSDateComponents *components = [calendar components:NSCalendarUnitYear fromDate:[NSDate date]];
+  NSInteger year = [components year];
+  if(year > 0) {
+    NSString *copyrightFormatString = @"Copyright © 2018-%d Alexandre Colucci\nhttps://blog.timac.org";
+    [self.copyrightLabel setStringValue:[NSString stringWithFormat:copyrightFormatString, year]];
+  }
 }
 
--(NSString*)identifier
-{
-    return [[self title] lowercaseString];
+- (NSString *)identifier {
+  return [[self title] lowercaseString];
 }
 
--(NSString*)title
-{
-    return @"About";
+- (NSString *)title {
+  return @"About";
 }
 
--(IBAction)openGitHub:(id)sender
-{
-	[[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://github.com/Timac/VPNStatus"]];
+- (IBAction)openGitHub:(id)sender {
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://github.com/Timac/VPNStatus"]];
 }
 
--(IBAction)openBlog:(id)sender
-{
-	[[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://blog.timac.org"]];
+- (IBAction)openBlog:(id)sender {
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://blog.timac.org"]];
 }
 
--(IBAction)doAppsFromSameDeveloper:(id)sender
-{
-	[[ACCrossPromotionWindowController sharedWindowController] showWindow:self];
+- (IBAction)doAppsFromSameDeveloper:(id)sender {
+  [[ACCrossPromotionWindowController sharedWindowController] showWindow:self];
 }
 
 @end

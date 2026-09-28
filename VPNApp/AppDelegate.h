@@ -11,16 +11,15 @@
 @interface AppDelegate : NSObject <NSApplicationDelegate>
 
 // 'Connect' button clicked
--(IBAction)toggleConnection:(id)sender;
+- (IBAction)toggleConnection:(id)sender;
 
 // 'Always Auto Connect' checkbox clicked
--(IBAction)alwaysAutoConnect:(id)sender;
+- (IBAction)alwaysAutoConnect:(id)sender;
 
 // Popup selection changed
--(IBAction)popupButtonSelectionChange:(id)sender;
+- (IBAction)popupButtonSelectionChange:(id)sender;
 
 // Open the website
--(IBAction)openWebsite:(id)sender;
+- (IBAction)openWebsite:(id)sender;
 
 @end
-

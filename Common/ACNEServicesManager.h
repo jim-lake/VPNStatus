@@ -17,7 +17,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ACNEServicesManager : NSObject
 
-@property (strong, nonnull) NSMutableArray <ACNEService*>* neServices;
+@property (strong, nonnull) NSMutableArray<ACNEService *> *neServices;
 @property (readonly, nonatomic, nonnull) dispatch_queue_t neServiceQueue;
 
 /**
@@ -29,7 +29,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  Load the NEConfigurations from NetworkExtension.framework
  */
--(void) loadConfigurationsWithHandler:(void (^)(NSError * _Nullable error))handler;
+- (void)loadConfigurationsWithHandler:(void (^)(NSError *_Nullable error))handler;
 
 @end
 

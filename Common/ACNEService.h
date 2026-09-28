@@ -15,7 +15,7 @@
 
 @interface ACNEService : NSObject
 
-@property (retain) NEConfiguration * configuration;
+@property (retain) NEConfiguration *configuration;
 @property (assign) ne_session_t session;
 
 // Use to ensure we got the session status
@@ -27,17 +27,16 @@
 - (instancetype)initWithConfiguration:(NEConfiguration *)inConfiguration;
 
 // Access information
--(NSString *)name;
--(NSString *)serverAddress;
--(NSString *)protocol;
+- (NSString *)name;
+- (NSString *)serverAddress;
+- (NSString *)protocol;
 
 // Refresh and get the state of the session
--(void)refreshSession;
--(SCNetworkConnectionStatus)state;
+- (void)refreshSession;
+- (SCNetworkConnectionStatus)state;
 
 // Connect and disconnect
--(void)connect;
--(void)disconnect;
+- (void)connect;
+- (void)disconnect;
 
 @end
-
