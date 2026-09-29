@@ -108,6 +108,26 @@ final class VPNStatusMenuUITests: XCTestCase {
 		app.typeKey(.escape, modifierFlags: [])
 	}
 
+	// Width of the currently-open status menu, measured from the on-screen frames
+	// of its rows (the widest row spans the menu's content width). Only rows with
+	// a real, non-zero frame are considered — a closed menu still lists its rows
+	// with zero frames.
+	private func openMenuWidth() -> CGFloat {
+		let rows = statusItem().menuItems.allElementsBoundByIndex
+		var maxRight: CGFloat = 0
+		var minLeft: CGFloat = .greatestFiniteMagnitude
+		var sawReal = false
+		for row in rows {
+			let f = row.frame
+			if f.size.width > 1 && f.size.height > 1 {
+				sawReal = true
+				minLeft = min(minLeft, f.origin.x)
+				maxRight = max(maxRight, f.origin.x + f.size.width)
+			}
+		}
+		return sawReal ? (maxRight - minLeft) : 0
+	}
+
 	// Activates a menu row (by identifier) through the app's UI-test hook, which
 	// performs the row's real NSMenuItem action just like a click.
 	private func activateRow(_ identifier: String) {
@@ -160,9 +180,10 @@ final class VPNStatusMenuUITests: XCTestCase {
 	}
 
 	// With a real VPN configured, the menu shows a per-service action row whose
-	// title is Connect/Disconnect/Connecting/Disconnecting <name>. The service
-	// name is carried in the action row's own title (there is no separate name
-	// label row any more).
+	// title is one of: "Connect <name>", "Disconnect <name>",
+	// "Disconnect <name> - Connecting...", or "Disconnecting <name>...". The
+	// service name is carried in the action row's own title (there is no separate
+	// name label row any more), and the row is a plain NSMenuItem in every state.
 	func testMenuShowsAServiceActionRow() throws {
 		try openStatusMenu()
 
@@ -177,9 +198,9 @@ final class VPNStatusMenuUITests: XCTestCase {
 		let title = statusItem().menuItems[actionID].title
 		let looksLikeServiceRow =
 			title.hasPrefix("Connect ") || title.hasPrefix("Disconnect ") ||
-			title.hasPrefix("Connecting ") || title.hasPrefix("Disconnecting ")
+			title.hasPrefix("Disconnecting ")
 		XCTAssertTrue(looksLikeServiceRow,
-					  "Service action row should read Connect/Disconnect/Connecting/Disconnecting <name>, got: \(title)")
+					  "Service action row should read Connect/Disconnect/Disconnecting <name>, got: \(title)")
 
 		dismissMenu()
 	}
@@ -206,7 +227,10 @@ final class VPNStatusMenuUITests: XCTestCase {
 		}
 		let uuid = actionID.replacingOccurrences(of: "service.action.", with: "")
 		let startTitle = statusItem().menuItems[actionID].title
-		guard startTitle.hasPrefix("Connect ") || startTitle.hasPrefix("Disconnect ") else {
+		let isSettled =
+			(startTitle.hasPrefix("Connect ") || startTitle.hasPrefix("Disconnect ")) &&
+			!startTitle.hasSuffix("- Connecting...")
+		guard isSettled else {
 			dismissMenu()
 			throw XCTSkip("Service is in a transitional state (\(startTitle)); skipping toggle test.")
 		}
@@ -242,60 +266,39 @@ final class VPNStatusMenuUITests: XCTestCase {
 					   "After the second activation, the VPN should return to \(want2)")
 	}
 
-	// A connecting service renders a custom two-label row: the full "Connecting
-	// <name>..." title on the left and a grey "cancel" on the right. This asserts
-	// — reading the labels' rendered contents through XCUITest accessibility (by
-	// the identifiers set on the labels), NOT by any internal state — that the
-	// FULL title text is shown (never truncated) and the trailing text is exactly
-	// "cancel". Skips (does not fail) when no service is currently Connecting.
-	func testConnectingRowShowsFullTitleAndCancel() throws {
+	// A connecting service renders as a plain NSMenuItem titled
+	// "Disconnect <name> - Connecting..." (with a checkmark). This asserts the
+	// row's title reads through XCUITest accessibility. Skips (does not fail)
+	// when no service is currently Connecting.
+	func testConnectingRowShowsConnectingTitle() throws {
 		let item = try openStatusMenu()
 
 		// Find a connecting service row by its menu-item title.
 		let rows = item.menuItems.allElementsBoundByIndex.filter {
 			$0.identifier.hasPrefix("service.action.") && !$0.identifier.hasSuffix(".sep")
 		}
-		guard let connectingRow = rows.first(where: { $0.title.hasPrefix("Connecting ") }) else {
+		guard let connectingRow = rows.first(where: { $0.title.hasSuffix("- Connecting...") }) else {
 			dismissMenu()
 			throw XCTSkip("No service is currently Connecting; start a slow/unreachable VPN to exercise this row.")
 		}
 
-		// The expected full title is the row's own menu-item title.
-		let expectedTitle = connectingRow.title
-		XCTAssertTrue(expectedTitle.hasSuffix("..."),
-					  "Connecting title should end with '...', got: \(expectedTitle)")
-
-		// Read the two labels' rendered contents via accessibility identifiers.
-		let primary = item.staticTexts["menuitem.primary"]
-		let secondary = item.staticTexts["menuitem.secondary"]
-		XCTAssertTrue(primary.waitForExistence(timeout: 3),
-					  "Connecting row should expose a 'menuitem.primary' label")
-		XCTAssertTrue(secondary.waitForExistence(timeout: 3),
-					  "Connecting row should expose a 'menuitem.secondary' label")
-
-		let shownTitle = (primary.value as? String) ?? primary.label
-		let shownTrailing = (secondary.value as? String) ?? secondary.label
-
-		// The rendered primary label must be the ENTIRE title — no truncation.
-		XCTAssertEqual(shownTitle, expectedTitle,
-					   "Primary label must show the full title with no truncation. expected='\(expectedTitle)' shown='\(shownTitle)'")
-		XCTAssertFalse(shownTitle.contains("\u{2026}"),
-					   "Primary label must not contain an ellipsis character (visual truncation): \(shownTitle)")
-		XCTAssertEqual(shownTrailing, "cancel",
-					   "Secondary label must show exactly 'cancel', got: \(shownTrailing)")
+		let title = connectingRow.title
+		XCTAssertTrue(title.hasPrefix("Disconnect "),
+					  "Connecting row should start with 'Disconnect ', got: \(title)")
+		XCTAssertTrue(title.hasSuffix(" - Connecting..."),
+					  "Connecting row should end with ' - Connecting...', got: \(title)")
+		XCTAssertFalse(title.contains("\u{2026}"),
+					   "Connecting title must use three literal periods, not an ellipsis character: \(title)")
 
 		dismissMenu()
 	}
 
 	// Diagnostic: dumps the REAL open-menu geometry and rendered label contents
-	// for every readable row. Kept for tuning the custom row's layout; run it
-	// manually. Reads only external accessibility (frames + label values).
+	// for every readable row. Reads only external accessibility (frames + label
+	// values).
 	func testDumpOpenMenuMetrics() throws {
 		let item = try openStatusMenu()
 
-		// Wait for the custom row's label to actually render before reading/shooting.
-		let primary = item.staticTexts["menuitem.primary"]
-		_ = primary.waitForExistence(timeout: 5)
 		usleep(600_000)
 
 		let shot = XCUIScreen.main.screenshot()
@@ -336,6 +339,57 @@ final class VPNStatusMenuUITests: XCTestCase {
 
 		XCTAssertTrue(statusItem().waitForNonExistence(timeout: 15),
 					  "The status item should disappear after Quit")
+	}
+
+	// Opening the menu, dismissing it, and opening it AGAIN (same app session, no
+	// relaunch) must render the menu at the SAME width when the content has not
+	// changed. This reproduces "the menu shrinks the second time you open it".
+	//
+	// Everything is observed through XCUITest accessibility: the width each time
+	// is the span of the open menu's row frames (see openMenuWidth()). We open by
+	// clicking the real status item, dismiss with Escape, then click the real
+	// status item again — no close/relaunch of the app in between.
+	func testMenuWidthIsSameOnReopen() throws {
+		// First open (hard-gated) and its width, read via accessibility.
+		try openStatusMenu()
+		let firstWidth = openMenuWidth()
+		XCTAssertGreaterThan(firstWidth, 1, "First open should have a real, measurable menu width")
+
+		// Dismiss the menu (content unchanged) — app keeps running.
+		dismissMenu()
+		usleep(600_000)
+
+		// Second open: click the SAME real status item again and gate on the menu
+		// actually being on screen (Quit row has a real, non-zero frame).
+		let item = statusItem()
+		let quit = item.menuItems["static.quit"]
+		func menuIsOpen() -> Bool {
+			return quit.exists && quit.frame.size.height > 1 && quit.frame.size.width > 1
+		}
+		var reopened = false
+		for _ in 0..<8 {
+			if menuIsOpen() { reopened = true; break }
+			app.activate()
+			usleep(400_000)
+			item.click()
+			let deadline = Date().addingTimeInterval(3)
+			while Date() < deadline && !menuIsOpen() {
+				usleep(150_000)
+			}
+			if menuIsOpen() { reopened = true; break }
+			app.typeKey(.escape, modifierFlags: [])
+			usleep(400_000)
+		}
+		XCTAssertTrue(reopened, "Menu must reopen in the same session so we can measure its width the second time")
+
+		let secondWidth = openMenuWidth()
+		XCTAssertGreaterThan(secondWidth, 1, "Second open should have a real, measurable menu width")
+
+		// The core assertion: same content ⇒ same width every open. No shrinking.
+		XCTAssertEqual(secondWidth, firstWidth, accuracy: 0.5,
+					   "Menu width changed on reopen with unchanged content: first=\(firstWidth) second=\(secondWidth). It must be identical every open.")
+
+		dismissMenu()
 	}
 
 	// MARK: - VPN state via the vpnutil CLI

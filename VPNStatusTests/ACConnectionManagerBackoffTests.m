@@ -2,16 +2,10 @@
 //  ACConnectionManagerBackoffTests.m
 //  VPNStatusTests
 //
-//  Unit tests for the per-service reconnect backoff sequence and its reset
-//  behavior. These exercise the pure, deterministic pieces (advanceDelay: and
-//  the backoff bookkeeping) directly, without a live VPN, timers, or the
-//  NEServicesManager singleton — see ACConnectionManager_Internal.h.
-//
 
 #import <XCTest/XCTest.h>
 
 #import "ACConnectionManager.h"
-#import "ACConnectionManager_Internal.h"
 #import "ACPreferences.h"
 
 @interface ACConnectionManagerBackoffTests : XCTestCase

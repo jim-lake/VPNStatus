@@ -10,7 +10,6 @@
 
 #import <os/log.h>
 
-#import "ACConnectionManager_Internal.h"
 #import "ACNEService.h"
 #import "ACNEServicesManager.h"
 #import "ACPreferences.h"

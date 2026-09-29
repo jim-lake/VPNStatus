@@ -18,21 +18,6 @@
 NS_ASSUME_NONNULL_BEGIN
 
 //
-// Custom NSMenuItem.view used for rows that need grey, right-aligned trailing
-// text (e.g. a "cancel" affordance on a connecting VPN row). The left side is
-// drawn to match a standard NSMenuItem — same font, leading inset, highlight
-// background, and enabled/disabled colors — while the right side shows the
-// trailing text in a secondary (grey) color, right-aligned.
-//
-@interface ACMenuItemTrailingTextView : NSView
-
-- (instancetype)initWithMenuItem:(NSMenuItem *)menuItem;
-
-@property (nullable, copy, nonatomic) NSString *trailingText;
-
-@end
-
-//
 // A lightweight, value-type description of a single row the caller wants in the
 // menu. Deliberately decoupled from ACNEService so tests can build these
 // directly.
@@ -53,10 +38,6 @@ NS_ASSUME_NONNULL_BEGIN
 // Optional value carried on the resulting NSMenuItem.representedObject so that
 // action handlers can resolve the underlying model (e.g. a VPN UUID).
 @property (nullable, copy) id representedObject;
-
-// Optional grey, right-aligned trailing text rendered by a custom menu-item
-// view (NSMenuItem.view). Nil means a plain item with no custom view.
-@property (nullable, copy) NSString *trailingText;
 
 // When YES, the row is rendered as a separator item (title/action/state are
 // ignored). Used so a section's separators are reconciled/reused in place like

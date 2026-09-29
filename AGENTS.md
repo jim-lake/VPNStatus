@@ -65,13 +65,16 @@ xcodebuild -project VPN.xcodeproj -scheme VPNStatus -destination 'platform=macOS
 The `VPNStatusTests` unit bundle covers `GitHubRelease` version comparison
 (Swift), the menu reconciler (`ACMenuReconcilerTests.m`, Obj-C), the per-service
 row title/action mapping (`AppDelegateServiceRowTests.m`), the reconnect
-backoff (`ACConnectionManagerBackoffTests.m`), and the Min/Max Reconnect
-preferences (`ACPreferencesReconnectTests.m`). The reconciler's `.m` is compiled
-into both the `VPNStatus` app target and the test target so the tests link its
-symbols directly; the backoff/preferences tests instead resolve their symbols
-against the host app (`BUNDLE_LOADER`) and reach `ACConnectionManager`'s internal
-backoff state through `Common/ACConnectionManager_Internal.h`. The test target's
-`HEADER_SEARCH_PATHS` includes `$(SRCROOT)/Common`.
+backoff (`ACConnectionManagerBackoffTests.m`), the Min/Max Reconnect
+preferences (`ACPreferencesReconnectTests.m`), and the arm-on-connect
+auto-connect policy (`ACAutoConnectPolicyTests.m`). The reconciler's `.m` is
+compiled into both the `VPNStatus` app target and the test target so the tests
+link its symbols directly; the backoff/preferences/auto-connect tests instead
+resolve their symbols against the host app (`BUNDLE_LOADER`). `ACConnectionManager`
+and `ACAutoConnectPolicy` each expose their full surface (including the pieces
+tests seed/inspect) from their single public header — there is no separate
+`_Internal.h` header. The test target's `HEADER_SEARCH_PATHS` includes
+`$(SRCROOT)/Common`.
 
 Shared schemes live in `VPN.xcodeproj/xcshareddata/xcschemes/`
 (`VPNStatus.xcscheme`, `VPNStatusUITests.xcscheme`); the `VPNStatus` scheme's
@@ -135,18 +138,17 @@ The tests:
 - `testClickingServiceTogglesConnection` — activates the service row and confirms
   via `vpnutil` that the real VPN flips state, then flips back
   (Connected → Disconnected → Connected).
-- `testConnectingRowShowsFullTitleAndCancel` — when a service is Connecting, the
-  row is the custom two-label view (see "Custom menu rows" below). Reads the two
-  labels' rendered contents **through XCUITest accessibility** (by the labels'
-  accessibility identifiers `menuitem.primary` / `menuitem.secondary`) and
-  asserts the primary label shows the **entire** title with no truncation (no `…`
-  ellipsis) and the secondary label is exactly `cancel`. Skipped (not failed)
-  when nothing is currently Connecting; start a slow/unreachable VPN to exercise
-  it (the dev machine has a `VPNStatus Test - Unreachable` config that lingers in
+- `testConnectingRowShowsConnectingTitle` — when a service is Connecting, the
+  row is a plain `NSMenuItem` titled `Disconnect <name> - Connecting...` (with a
+  checkmark). Reads the row's title **through XCUITest accessibility** and
+  asserts it starts with `Disconnect ` and ends with the literal ` - Connecting...`
+  (three periods, not a `…` ellipsis). Skipped (not failed) when nothing is
+  currently Connecting; start a slow/unreachable VPN to exercise it (the dev
+  machine has a `VPNStatus Test - Unreachable` config that lingers in
   Connecting).
 - `testDumpOpenMenuMetrics` — diagnostic (not an assertion): opens the menu and
   prints every row's frame plus every static-text label's identifier/value/frame,
-  and attaches a screenshot of the open menu. Use it when tuning the custom row's
+  and attaches a screenshot of the open menu. Use it when inspecting menu row
   layout. Reads only external accessibility (frames + label values), never
   in-process/introspected state.
 - `testQuitTerminatesApp` — activates Quit and confirms the app terminates.
@@ -167,12 +169,10 @@ the test fails and aborts *there*, before any reads or assertions.
   isn't really on screen.
 
 **Verify what is ACTUALLY SHOWN via accessibility, not introspection.** To check
-the rendered text of the custom row, read the label elements by their
-accessibility identifiers (`menuitem.primary`, `menuitem.secondary`) and assert
-their `value`. Do NOT infer correctness from the `NSMenuItem.title` model string
-(that is always the full string regardless of what's drawn) or from reading the
-app's own code/state. The labels never truncate (see "Custom menu rows"), so the
-rendered value equalling the full expected string is the proof.
+a row's rendered text, read the `NSMenuItem`'s title through XCUITest (the row's
+`title`) and assert on it. Do NOT infer correctness from reading the app's own
+code/state. Every per-service row is now a plain `NSMenuItem` (there is no custom
+menu-item view any more).
 
 The five original tests:
 
@@ -385,6 +385,24 @@ notifications, not delegates or callbacks (see "Notifications" below).
   - `shouldPreventAutoConnectOnCurrentSSID` checks the current Wi-Fi SSID (via
     `CWWiFiClient`/`CWInterface`) against the ignored-SSID list.
   - `connect/disconnectAllAutoConnectedServices`, `toggleConnectionForService:`.
+  - Exposes its full surface (backoff bookkeeping included) from the single
+    `ACConnectionManager.h`; there is no `_Internal.h`.
+
+- **`ACAutoConnectPolicy.{h,m}`** — Singleton owning the **arm-on-connect
+  intent state machine** that decides *when* a service becomes
+  always-auto-connect (as opposed to `ACConnectionManager`, which owns the
+  *mechanism*: the persisted flag + reconnect/backoff). A user Connect request
+  (`requestConnectService:`) **arms** the service in an in-memory set
+  (`armedServiceIdentifiers`, never persisted) and starts the connection.
+  Observing `kSessionStateChangedNotification`, an armed service that reaches
+  **Connected** commits always-auto-connect (via
+  `ACConnectionManager.setAlwaysAutoConnect:`) and disarms; one that reaches
+  **Disconnected** (a failed attempt) disarms without committing.
+  `requestDisconnectService:` / `requestCancelService:` /
+  `requestDisconnectServices:` disarm and disable always-auto-connect
+  immediately. Because the armed set lives only in memory, quitting the app
+  clears it — auto-connect is enabled only by a successful Connect within the
+  same process run. Exercised by `ACAutoConnectPolicyTests`.
 
 - **`ACPreferences.{h,m}`** — Singleton wrapper over
   `NSUserDefaults` (domain `org.timac.VPNStatus`). Stores:
@@ -410,33 +428,9 @@ notifications, not delegates or callbacks (see "Notifications" below).
   changed. Deliberately decoupled from `ACNEService`/singletons so it is
   unit-testable (`ACMenuReconcilerTests`); `AppDelegate` builds descriptors from
   its services and delegates the per-service action rows to it, so the tested
-  code is the code that runs.
-
-  **Custom menu rows (`ACMenuItemTrailingTextView`, in the same file).** A
-  descriptor may carry `trailingText`; when set, the reconciler installs a custom
-  `NSMenuItem.view` that draws the row as a left title + right-aligned grey
-  trailing text (used for the `Connecting <name>...` row, whose trailing text is
-  `cancel`). Rules for this view — do not regress them:
-  - **Auto Layout, never hand-positioned.** The row is two `NSTextField` labels
-    plus a flexible gap: `[leadingInset][title]<<flex>>[>=gap][trailing][trailingInset]`.
-    Both labels have required horizontal compression resistance and no
-    line-break/truncation mode set, so the row is always sized to fit the FULL
-    text. Never measure strings by hand or set absolute x positions.
-  - **Auto-grow, never shrink/truncate.** `intrinsicContentSize` is derived from
-    the labels' own `fittingSize` (plus insets and the min gap). AppKit sizes the
-    menu to its widest item and only ever stretches rows wider, so the title
-    never truncates. A pure-Auto-Layout menu-item view with no intrinsic size
-    collapses to height 1 — the intrinsic size is required.
-  - **Tunable metrics** are `static const` at the top of the `.m`, measured
-    against real AppKit rows and confirmed via the UI test screenshot/labels:
-    `kMenuLeadingInset` (title inset), `kMenuCheckmarkGutter` (extra inset added
-    to ALL titles when any item in the menu is checked, mirroring AppKit's
-    checkmark gutter — a connected VPN shows a checkmark), `kMenuTrailingInset`
-    (trailing text → right edge), `kMenuInterItemGap` (minimum title↔trailing
-    gap), `kMenuVerticalPadding` (→ 24pt row height to match AppKit).
-  - **The labels carry accessibility identifiers** `menuitem.primary` (title) and
-    `menuitem.secondary` (trailing) so the UI test can read what is ACTUALLY
-    rendered and assert the full title shows with no truncation.
+  code is the code that runs. Every row it produces is a plain `NSMenuItem`
+  (title/action/state/enabled/representedObject); there is no custom
+  `NSMenuItem.view` any more.
 
 ### `VPNStatus/` — the primary menu bar app
 
@@ -450,11 +444,11 @@ notifications, not delegates or callbacks (see "Notifications" below).
     `NSMenuItem.identifier`): a top **"Disconnect All"** row (disabled when
     nothing is connected; its title shows the connected VPN's name when exactly
     one is connected, otherwise a connection count), per-service
-    connect/disconnect rows, and a static Settings/Quit block built once. Each
-    per-service connect/disconnect row shows a **checkmark** while that service
-    is connected. A service that is **Connecting** renders instead as the custom
-    two-label row (`ACMenuItemTrailingTextView`): title `Connecting <name>...`
-    with a right-aligned grey `cancel` (see "Custom menu rows"); its action is
+    connect/disconnect rows, and a static Settings/Quit block built once. Every
+    per-service row is a plain `NSMenuItem`. A **connected** row is titled
+    `Disconnect <name>` with a checkmark; a **disconnected** row is titled
+    `Connect <name>` with no checkmark. A service that is **Connecting** is a row
+    titled `Disconnect <name> - Connecting...` with a checkmark; its action is
     `cancelService:`, which aborts the attempt via `ACNEService.cancel`
     (`ne_session_stop`). A `Disconnecting` service is a plain, non-actionable
     `Disconnecting <name>...` row. There is no pause section, no per-service info
@@ -464,14 +458,29 @@ notifications, not delegates or callbacks (see "Notifications" below).
     unit-tested (`AppDelegateServiceRowTests`). Note both the `Connecting` and
     `Disconnecting` titles end in three literal periods `...`, not the `…`
     ellipsis character.
-  - **Auto-connect is driven by the menu actions themselves.** Manually
-    connecting a service (`connectService:`) marks it always-auto-connect;
-    manually disconnecting (`disconnectService:`) clears its always-auto-connect
-    flag so the timer won't immediately reconnect it. Canceling a connecting
-    service (`cancelService:`) also clears the flag. "Disconnect All"
-    (`disconnectAll:`) disconnects every connected service and clears their
-    auto-connect flags. There is no "Always auto connect" toggle row and no
-    pause controls.
+  - **Auto-connect uses an arm-on-connect state machine.** The menu actions
+    express *intent* and delegate to `ACAutoConnectPolicy` (`Common/`):
+    - `connectService:` calls `-requestConnectService:`, which **arms** the
+      service (records an in-memory intent) and starts the connection. It does
+      **not** enable always-auto-connect yet. Only when the armed service
+      actually transitions to **Connected** (observed via
+      `kSessionStateChangedNotification`) does the policy commit
+      always-auto-connect. If the attempt fails instead (Connecting →
+      Disconnected), the service is disarmed and the flag is never set.
+    - `disconnectService:` → `-requestDisconnectService:` disables
+      always-auto-connect **immediately** (disarm + clear the persisted flag)
+      and stops the VPN, so the reconnect timer won't bring it back.
+    - `cancelService:` → `-requestCancelService:` disarms, disables
+      always-auto-connect, and aborts the attempt.
+    - `disconnectAll:` → `-requestDisconnectServices:` disarms + disables +
+      stops every connected service.
+    The **armed set is in-memory only** (`armedServiceIdentifiers`), never
+    persisted: quitting the app clears it, so an interrupted connect can never
+    arm across process runs. Only a successful connect within the *same* run
+    enables auto-connect. `ACAutoConnectPolicy` owns *when* a service becomes
+    always-auto-connect; `ACConnectionManager` still owns the *mechanism* (the
+    persisted flag write via `setAlwaysAutoConnect:` plus reconnect/backoff).
+    There is no "Always auto connect" toggle row and no pause controls.
   - Reconciliation diffs by **stable identity**: per-service items carry
     `identifier` = a section prefix + the service's configuration UUID, and
     `representedObject` = the UUID. Surviving services keep their existing
@@ -619,13 +628,38 @@ cross the boundary are marked `@objc` (e.g. `UpdateManager`,
   helper, factory, or abstraction "for no reason" — call the underlying API
   directly. Only introduce an indirection when it earns its keep with a concrete,
   present need.
-- **Comments are disfavored except for genuinely non-obvious information.** Do
-  not write file-header comments, block banners, or per-function description
-  comments. Never write a comment that restates what the code already says — a
-  redundant comment is always wrong because it must be kept in sync with the
-  code it duplicates, so it should never have existed. Comment only the things
-  the code cannot express: a surprising constraint, a hard-won macOS quirk, the
-  reason behind a non-obvious choice.
+- **Comments are disfavored and are the exception, not the rule.** The default
+  is **no comment**. Every comment is a liability: it must be re-verified and
+  churned on *every* nearby code change, on top of the actual code edit, and a
+  stale comment is worse than none. A comment only earns its place if it
+  documents something the code genuinely *cannot* express. The **only**
+  acceptable reasons to write a comment are:
+  1. **Undocumented / private Apple API behavior** — e.g. the `ne_session_*`
+     calls in `ACDefines.h`/`ACNEService.m`, why `cancel` uses `ne_session_stop`
+     rather than `ne_session_cancel`, or citing the `configd` source a private
+     symbol came from.
+  2. **A hard-won OS quirk or non-obvious constraint** — e.g. the macOS
+     status-menu automation constraints in the UI tests, or why a status-item
+     menu is only visible to XCUITest on the first open.
+  3. **A genuinely surprising, non-obvious *why*** behind a choice that the code
+     itself cannot convey and that the next reader would otherwise get wrong.
+
+  Everything else is **banned**, with no exceptions:
+  - **No file-header comments** (the `// Foo.m / Created by … / Copyright …`
+    banners). Do not add them to new files and remove them when editing.
+  - **No per-function / per-method description comments.** A method's name and
+    signature are the documentation. Do not narrate what a function does above
+    it.
+  - **No block-banner / section-divider comments**, and no comments that restate
+    the code on the next line (`// increment i`, `// the trailing separator`,
+    `// Connect`, `// Save the preferences`, etc.). If the comment could be
+    deleted without losing information a competent reader doesn't already have
+    from the code, it must be deleted.
+
+  These big descriptive comments are exactly the ones that rot: they force a
+  churn on every change and drift out of sync. When in doubt, delete the comment
+  and let the code speak. Prefer clearer names and smaller functions over
+  explanatory prose.
 
 ## Gotchas / known rough edges
 
@@ -656,7 +690,10 @@ crappy"):
 
 - New VPN capability / status handling → `Common/ACNEService.*` and
   `Common/ACNEServicesManager.*`.
-- Auto-connect behavior, timers, SSID rules → `Common/ACConnectionManager.*`.
+- Auto-connect *mechanism* (reconnect timers, backoff, SSID rules) →
+  `Common/ACConnectionManager.*`.
+- Auto-connect *policy* (when a Connect commits to always-auto-connect; the
+  arm-on-connect state machine) → `Common/ACAutoConnectPolicy.*`.
 - New persisted setting → `Common/ACPreferences.*` (add key + accessor + notify).
 - Menu bar UI / menu items → `VPNStatus/AppDelegate.m`.
 - Preferences window UI → `VPNStatus/PreferencesUI/*` + matching XIB in

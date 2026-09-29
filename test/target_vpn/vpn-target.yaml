@@ -1,0 +1,88 @@
+# Lima config for a LOCAL TEST IKEv2 VPN target.
+#
+# WHY BRIDGED (do not change to user/docker/port-forwarding): a bridged NIC gives
+# this VM its OWN DHCP address on the host LAN, and the VPN listens on UDP 500/4500
+# on THAT address. Nothing is forwarded from the macOS host, so host ports 500/4500
+# stay free and the IKEv2 VPN keeps working. Any port-forwarding approach (docker,
+# lima user-mode forwards) would occupy host 500/4500 and break the VPN.
+#
+# Bridged mode requires socket_vmnet + the lima sudoers entry (installed via
+# `limactl sudoers | sudo tee /etc/sudoers.d/lima`). The bridged network is defined
+# in ~/.lima/_config/networks.yaml as interface en0.
+#
+# Start with ./vpn-target.sh start (it passes --set to point the install mount at
+# this directory's install/ folder regardless of where the repo lives).
+
+minimumLimaVersion: 2.0.0
+
+base:
+- template:ubuntu-26.04
+
+cpus: 2
+memory: "2GiB"
+disk: "10GiB"
+
+# BRIDGED networking: the VM gets a real LAN IP via the host's en0. No host port
+# forwarding is used, so UDP 500/4500 on the Mac remain free.
+networks:
+- lima: bridged
+
+# CRITICAL: disable ALL automatic guest->host port forwarding. Lima's hostagent
+# by default forwards any port the guest listens on to the Mac. strongSwan
+# listens on UDP 500/4500, so without this Lima binds host 500/4500 -- occupying
+# the very ports the VPN needs and breaking it. We reach the VPN over the bridged
+# LAN IP instead, so no forwarding is wanted at all.
+#
+# On Lima 2.0.x guestIPMustBeZero defaults to true, so a bare ignore rule misses
+# listeners bound to 127.0.0.1 / [::]. Two explicit rules cover both the
+# all-interfaces (0.0.0.0) and localhost (127.0.0.1) listeners. Port 22 (SSH) is
+# always forwarded regardless; that's fine and unrelated to the VPN.
+portForwards:
+- guestIP: "0.0.0.0"
+  guestIPMustBeZero: true
+  proto: any
+  guestPortRange: [1, 65535]
+  ignore: true
+- guestIP: "127.0.0.1"
+  proto: any
+  guestPortRange: [1, 65535]
+  ignore: true
+
+mountType: "virtiofs"
+
+# The install/ directory (this file's sibling) is mounted read-only into the guest
+# at /opt/vpn-install. NOTE: {{.Dir}} would be the instance data dir, not this
+# file's location, so vpn-target.sh injects the real absolute host path via
+# `--set '.mounts[0].location=...'`. The value below is only a placeholder.
+mounts:
+- location: "__INSTALL_DIR__"
+  mountPoint: "/opt/vpn-install"
+  writable: false
+
+provision:
+- mode: system
+  script: |
+    #!/bin/bash
+    set -euo pipefail
+    export LIMA_USER="{{.User}}"
+    bash /opt/vpn-install/provision.sh
+
+probes:
+- description: "strongSwan IKEv2 connections loaded"
+  script: |
+    #!/bin/bash
+    set -eu
+    for i in $(seq 1 60); do
+      if sudo swanctl --list-conns 2>/dev/null | grep -q 'ikev2-'; then
+        exit 0
+      fi
+      sleep 2
+    done
+    echo "strongSwan connections did not load" >&2
+    exit 1
+  hint: "Inspect: limactl shell vpn-target sudo cat /tmp/install.log"
+
+message: |
+  Test IKEv2 VPN target is up.
+  VM LAN IP:    limactl shell {{.Name}} cat '~/vpn_target_ip'
+  mobileconfig: ./vpn-target.sh mobileconfig

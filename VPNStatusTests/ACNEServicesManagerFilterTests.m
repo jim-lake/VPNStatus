@@ -13,7 +13,6 @@
 #import "ACDefines.h"
 #import "ACNEService.h"
 #import "ACNEServicesManager.h"
-#import "ACNEServicesManager_Internal.h"
 
 // Minimal stand-in for an NEConfiguration. -processConfigurations: only reads
 // -name and -VPN (and -identifier for the VPN ones, when it builds the service),

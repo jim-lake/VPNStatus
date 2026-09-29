@@ -1,50 +1,35 @@
-//
-//  ACConnectionManager.h
-//  VPN
-//
-//  Created by Alexandre Colucci on 07.07.2018.
-//  Copyright © 2018 Timac. All rights reserved.
-//
-//	This class contains the logic to auto connect to a service
-//
-
 #import <Cocoa/Cocoa.h>
 
 @class ACNEService;
 
-@interface ACConnectionManager : NSObject
+NS_ASSUME_NONNULL_BEGIN
 
+@interface ACServiceBackoff : NSObject
 
-/**
- Get the singleton
- */
-+ (ACConnectionManager *)sharedManager;
-
-
-/**
- Connect or disconnect the VPN service based on its current state
- */
-- (void)toggleConnectionForService:(ACNEService *)inService;
-
-/**
- Save the preferences for the ACNEService and start the timer for auto connecting
- */
-- (void)setAlwaysAutoConnect:(BOOL)inAlwaysAutoConnect forACNEService:(ACNEService *)inNEService;
-
-/**
- Return YES if at least one VPN service has been set to auto connect
- */
-- (BOOL)isAtLeastOneServiceSetToAutoConnect;
-
-
-/**
- Disconnect all the services marked as always auto connect
- */
-- (void)disconnectAllAutoConnectedServices;
-
-/**
- Connect all the services marked as always auto connect
- */
-- (void)connectAllAutoConnectedServices;
+// nextDelay follows: 0 (first) -> clamp(previous*2 or min, 1, maxReconnect).
+@property (assign) NSInteger nextDelay;
+@property (strong, nullable) NSTimer *retryTimer;
+@property (strong, nullable) NSTimer *stabilityTimer;
 
 @end
+
+@interface ACConnectionManager : NSObject
+
+// Mutated only on the main queue (all callers are main-queue), so no locking.
+@property (strong) NSMutableDictionary<NSString *, ACServiceBackoff *> *backoffByServiceIdentifier;
+
++ (ACConnectionManager *)sharedManager;
+
+- (void)toggleConnectionForService:(ACNEService *)inService;
+- (void)setAlwaysAutoConnect:(BOOL)inAlwaysAutoConnect forACNEService:(ACNEService *)inNEService;
+- (BOOL)isAtLeastOneServiceSetToAutoConnect;
+- (void)disconnectAllAutoConnectedServices;
+- (void)connectAllAutoConnectedServices;
+
+- (ACServiceBackoff *)backoffForServiceIdentifier:(NSString *)inServiceIdentifier;
+- (void)resetBackoffForServiceIdentifier:(NSString *)inServiceIdentifier;
+- (NSInteger)advanceDelay:(NSInteger)inCurrentDelay;
+
+@end
+
+NS_ASSUME_NONNULL_END

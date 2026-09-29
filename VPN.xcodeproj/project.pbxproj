@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0231297C20F9F8CF003F7540 /* ACConnectionManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 0231297A20F9F8CE003F7540 /* ACConnectionManager.m */; };
+		BA00000000000000000030 /* ACAutoConnectPolicy.m in Sources */ = {isa = PBXBuildFile; fileRef = BA00000000000000000031 /* ACAutoConnectPolicy.m */; };
 		024D8FCE2BC1DE38005BF977 /* ACPreferencesGeneralView.xib in Resources */ = {isa = PBXBuildFile; fileRef = 024D8FCA2BC1DE38005BF977 /* ACPreferencesGeneralView.xib */; };
 		024D8FCF2BC1DE38005BF977 /* ACPreferencesWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = 024D8FCC2BC1DE38005BF977 /* ACPreferencesWindow.xib */; };
 		024D8FD62BC1DF32005BF977 /* ACPreferencesGeneralViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 024D8FD12BC1DF32005BF977 /* ACPreferencesGeneralViewController.m */; };
@@ -42,6 +43,7 @@
 		BA00000000000000000011 /* ACConnectionManagerBackoffTests.m in Sources */ = {isa = PBXBuildFile; fileRef = BA00000000000000000001 /* ACConnectionManagerBackoffTests.m */; };
 		BA00000000000000000012 /* ACPreferencesReconnectTests.m in Sources */ = {isa = PBXBuildFile; fileRef = BA00000000000000000002 /* ACPreferencesReconnectTests.m */; };
 		BA00000000000000000021 /* ACNEServicesManagerFilterTests.m in Sources */ = {isa = PBXBuildFile; fileRef = BA00000000000000000020 /* ACNEServicesManagerFilterTests.m */; };
+		BA00000000000000000040 /* ACAutoConnectPolicyTests.m in Sources */ = {isa = PBXBuildFile; fileRef = BA00000000000000000041 /* ACAutoConnectPolicyTests.m */; };
 		BA00000000000000000023 /* AppDelegateServiceRowTests.m in Sources */ = {isa = PBXBuildFile; fileRef = BA00000000000000000022 /* AppDelegateServiceRowTests.m */; };
 		DB452101CBF912CD9BB9CCC0 /* ACMenuReconciler.m in Sources */ = {isa = PBXBuildFile; fileRef = 639366C1E89A8D678ECDC707 /* ACMenuReconciler.m */; };
 /* End PBXBuildFile section */
@@ -66,6 +68,8 @@
 /* Begin PBXFileReference section */
 		0231297920F9F8CE003F7540 /* ACConnectionManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ACConnectionManager.h; sourceTree = "<group>"; };
 		0231297A20F9F8CE003F7540 /* ACConnectionManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ACConnectionManager.m; sourceTree = "<group>"; };
+		BA00000000000000000031 /* ACAutoConnectPolicy.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ACAutoConnectPolicy.m; sourceTree = "<group>"; };
+		BA00000000000000000032 /* ACAutoConnectPolicy.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ACAutoConnectPolicy.h; sourceTree = "<group>"; };
 		024D8FCB2BC1DE38005BF977 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/ACPreferencesGeneralView.xib; sourceTree = "<group>"; };
 		024D8FCD2BC1DE38005BF977 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/ACPreferencesWindow.xib; sourceTree = "<group>"; };
 		024D8FD02BC1DF32005BF977 /* ACPreferencesGeneralViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ACPreferencesGeneralViewController.h; sourceTree = "<group>"; };
@@ -113,8 +117,8 @@
 		BA00000000000000000001 /* ACConnectionManagerBackoffTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ACConnectionManagerBackoffTests.m; sourceTree = "<group>"; };
 		BA00000000000000000002 /* ACPreferencesReconnectTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ACPreferencesReconnectTests.m; sourceTree = "<group>"; };
 		BA00000000000000000020 /* ACNEServicesManagerFilterTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ACNEServicesManagerFilterTests.m; sourceTree = "<group>"; };
+		BA00000000000000000041 /* ACAutoConnectPolicyTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ACAutoConnectPolicyTests.m; sourceTree = "<group>"; };
 		BA00000000000000000022 /* AppDelegateServiceRowTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AppDelegateServiceRowTests.m; sourceTree = "<group>"; };
-		BA00000000000000000003 /* ACConnectionManager_Internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ACConnectionManager_Internal.h; sourceTree = "<group>"; };
 		C9CBC4E527B5CDCA00D25554 /* CoreWLAN.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreWLAN.framework; path = System/Library/Frameworks/CoreWLAN.framework; sourceTree = SDKROOT; };
 		FA53907E20EF5FD600BA9AF7 /* NetworkMenusCommon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkMenusCommon.framework; path = ../../../../System/Library/PrivateFrameworks/NetworkMenusCommon.framework; sourceTree = "<group>"; };
 		FA53908120EF603700BA9AF7 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
@@ -195,6 +199,7 @@
 				BA00000000000000000001 /* ACConnectionManagerBackoffTests.m */,
 				BA00000000000000000002 /* ACPreferencesReconnectTests.m */,
 				BA00000000000000000020 /* ACNEServicesManagerFilterTests.m */,
+				BA00000000000000000041 /* ACAutoConnectPolicyTests.m */,
 				BA00000000000000000022 /* AppDelegateServiceRowTests.m */,
 			);
 			path = VPNStatusTests;
@@ -235,7 +240,8 @@
 				02619DFD20F7F7BE00099652 /* ACPreferences.m */,
 				0231297920F9F8CE003F7540 /* ACConnectionManager.h */,
 				0231297A20F9F8CE003F7540 /* ACConnectionManager.m */,
-				BA00000000000000000003 /* ACConnectionManager_Internal.h */,
+				BA00000000000000000032 /* ACAutoConnectPolicy.h */,
+				BA00000000000000000031 /* ACAutoConnectPolicy.m */,
 				028DF1152AC7FA200084A822 /* ACLocationManager.h */,
 				028DF1142AC7FA200084A822 /* ACLocationManager.m */,
 				1ABCCAA438EEC7602AF60A0B /* ACMenuReconciler.h */,
@@ -431,6 +437,7 @@
 				BA00000000000000000011 /* ACConnectionManagerBackoffTests.m in Sources */,
 				BA00000000000000000012 /* ACPreferencesReconnectTests.m in Sources */,
 				BA00000000000000000021 /* ACNEServicesManagerFilterTests.m in Sources */,
+				BA00000000000000000040 /* ACAutoConnectPolicyTests.m in Sources */,
 				BA00000000000000000023 /* AppDelegateServiceRowTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -451,6 +458,7 @@
 				02619DFF20F7F7BF00099652 /* ACPreferences.m in Sources */,
 				028DF1172AC7FA200084A822 /* ACLocationManager.m in Sources */,
 				0231297C20F9F8CF003F7540 /* ACConnectionManager.m in Sources */,
+				BA00000000000000000030 /* ACAutoConnectPolicy.m in Sources */,
 				024D90582BC9AEB2005BF977 /* ACPreferencesIgnoredViewController.m in Sources */,
 				A064771077363698F4A97525 /* ACMenuReconciler.m in Sources */,
 			);

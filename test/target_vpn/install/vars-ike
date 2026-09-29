@@ -1,0 +1,12 @@
+
+set_var EASYRSA_REQ_COUNTRY	"US"
+set_var EASYRSA_REQ_PROVINCE	"California"
+set_var EASYRSA_REQ_CITY	"Los Angeles"
+set_var EASYRSA_REQ_ORG	"EasyCo"
+set_var EASYRSA_REQ_EMAIL	"me@example.net"
+set_var EASYRSA_REQ_OU		"EasyOrg"
+set_var EASYRSA_CA_EXPIRE 36500
+set_var EASYRSA_CERT_EXPIRE 36500
+set_var EASYRSA_BATCH		"yes"
+set_var EASYRSA_ALGO		"ec"
+set_var EASYRSA_CURVE		"prime256v1"

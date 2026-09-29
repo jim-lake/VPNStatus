@@ -1,3 +1,4 @@
+.kiro
 .DS_Store
 # Xcode
 #
@@ -64,3 +65,9 @@ fastlane/test_output
 
 iOSInjectionProject/
 /VPN.xcodeproj/project.xcworkspace
+
+# Compiled standalone vpnutil debug tool
+test/vpnutil/vpnutil
+
+# Generated mobileconfig / certs from the local test VPN target VM
+test/target_vpn/out/

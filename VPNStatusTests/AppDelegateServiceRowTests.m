@@ -12,7 +12,6 @@
 #import <SystemConfiguration/SystemConfiguration.h>
 
 #import "AppDelegate.h"
-#import "AppDelegate_Internal.h"
 
 @interface AppDelegateServiceRowTests : XCTestCase
 @property (strong) AppDelegate *delegate;
@@ -42,7 +41,7 @@
 
 // The key new behavior: a Connecting service can be canceled.
 - (void)testConnectingMapsToCancelAndIsActionable {
-  XCTAssertEqualObjects([self.delegate titleForServiceActionState:kSCNetworkConnectionConnecting name:@"VPN"], @"Connecting VPN...");
+  XCTAssertEqualObjects([self.delegate titleForServiceActionState:kSCNetworkConnectionConnecting name:@"VPN"], @"Disconnect VPN - Connecting...");
   SEL action = [self.delegate actionForServiceActionState:kSCNetworkConnectionConnecting];
   XCTAssertEqual(action, @selector(cancelService:));
   XCTAssertTrue(action != nil, @"Connecting rows must be actionable so the user can cancel");

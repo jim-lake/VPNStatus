@@ -7,7 +7,6 @@
 //
 
 #import "AppDelegate.h"
-#import "AppDelegate_Internal.h"
 
 #import <os/log.h>
 
@@ -17,6 +16,7 @@
 #import "ACPreferences.h"
 #import "ACPreferencesWindowController.h"
 #import "ACConnectionManager.h"
+#import "ACAutoConnectPolicy.h"
 #import "ACMenuReconciler.h"
 
 @interface AppDelegate () <NSMenuDelegate>
@@ -52,6 +52,10 @@
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
   // Create the ACConnectionManager singleton
   [ACConnectionManager sharedManager];
+
+  // Create the ACAutoConnectPolicy singleton so it starts observing session
+  // state and can commit/drop armed connects.
+  [ACAutoConnectPolicy sharedPolicy];
 
   // Create the NSStatusItem
   self.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
@@ -370,7 +374,7 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
   case kSCNetworkConnectionConnected:
     return [NSString stringWithFormat:@"Disconnect %@", inName];
   case kSCNetworkConnectionConnecting:
-    return [NSString stringWithFormat:@"Connecting %@...", inName];
+    return [NSString stringWithFormat:@"Disconnect %@ - Connecting...", inName];
   case kSCNetworkConnectionDisconnecting:
     return [NSString stringWithFormat:@"Disconnecting %@...", inName];
   case kSCNetworkConnectionInvalid:
@@ -445,8 +449,8 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
 
 //
 // Reconciles the Connect/Disconnect rows. One row per service, ordered to match
-// neServices, followed by a trailing separator. A connected service's row shows
-// a checkmark (NSControlStateValueOn). Delegates the actual diffing to
+// neServices, followed by a trailing separator. A connected or connecting
+// service's row shows a checkmark (NSControlStateValueOn). Delegates the actual diffing to
 // ACMenuReconciler (which is exercised directly by ACMenuReconcilerTests), so
 // the tested code path is the one that actually runs here.
 //
@@ -462,8 +466,9 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
     SEL action = [self actionForServiceActionState:state];
     BOOL enabled = (action != nil);
 
-    // Checkmark when the service is connected.
-    NSControlStateValue checkState = (state == kSCNetworkConnectionConnected) ? NSControlStateValueOn : NSControlStateValueOff;
+    // Checkmark when the service is connected or connecting.
+    NSControlStateValue checkState =
+      (state == kSCNetworkConnectionConnected || state == kSCNetworkConnectionConnecting) ? NSControlStateValueOn : NSControlStateValueOff;
 
     ACMenuRowDescriptor *descriptor = [ACMenuRowDescriptor descriptorWithKey:identifier
                                                                        title:title
@@ -471,13 +476,6 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
                                                                        state:checkState
                                                                      enabled:enabled
                                                            representedObject:uuid];
-
-    // While connecting, the row's action is "cancel the attempt"; surface that
-    // as grey, right-aligned trailing text via a custom menu-item view (see
-    // ACMenuItemTrailingTextView).
-    if(state == kSCNetworkConnectionConnecting) {
-      descriptor.trailingText = @"cancel";
-    }
 
     [descriptors addObject:descriptor];
   }
@@ -580,12 +578,7 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
     return;
   }
 
-  os_log_info(OS_LOG_DEFAULT, "user action: connect VPN '%{public}@' (%{public}@)", neService.name, [self uuidForService:neService]);
-
-  // Manually connecting through the app enables auto connect for this service.
-  [[ACConnectionManager sharedManager] setAlwaysAutoConnect:YES forACNEService:neService];
-
-  [neService connect];
+  [[ACAutoConnectPolicy sharedPolicy] requestConnectService:neService];
 
   [self refreshMenu];
 }
@@ -597,13 +590,7 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
     return;
   }
 
-  os_log_info(OS_LOG_DEFAULT, "user action: disconnect VPN '%{public}@' (%{public}@)", neService.name, [self uuidForService:neService]);
-
-  // Manually disconnecting through the app disables auto connect for this
-  // service so it is not immediately reconnected by the auto-connect timer.
-  [[ACConnectionManager sharedManager] setAlwaysAutoConnect:NO forACNEService:neService];
-
-  [neService disconnect];
+  [[ACAutoConnectPolicy sharedPolicy] requestDisconnectService:neService];
 
   [self refreshMenu];
 }
@@ -615,26 +602,13 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
     return;
   }
 
-  os_log_info(OS_LOG_DEFAULT, "user action: cancel connecting VPN '%{public}@' (%{public}@)", neService.name, [self uuidForService:neService]);
-
-  // Canceling a pending connection is a manual disconnect intent: clear auto
-  // connect so the timer does not immediately re-initiate the attempt.
-  [[ACConnectionManager sharedManager] setAlwaysAutoConnect:NO forACNEService:neService];
-
-  [neService cancel];
+  [[ACAutoConnectPolicy sharedPolicy] requestCancelService:neService];
 
   [self refreshMenu];
 }
+
 - (IBAction)disconnectAll:(id)sender {
-  ACConnectionManager *connectionManager = [ACConnectionManager sharedManager];
-
-  NSArray<ACNEService *> *connected = [self connectedServices];
-  os_log_info(OS_LOG_DEFAULT, "user action: disconnect all (%lu connected)", (unsigned long)[connected count]);
-
-  for(ACNEService *neService in connected) {
-    [connectionManager setAlwaysAutoConnect:NO forACNEService:neService];
-    [neService disconnect];
-  }
+  [[ACAutoConnectPolicy sharedPolicy] requestDisconnectServices:[self connectedServices]];
 
   [self refreshMenu];
 }
