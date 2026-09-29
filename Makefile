@@ -26,6 +26,13 @@ UNSIGNED_FLAGS := CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_A
 
 XCODEBUILD     := xcodebuild -project $(PROJECT) -configuration $(CONFIGURATION)
 
+# Release build output: kept in a repo-local DerivedData dir (matching CI) and
+# the packaged zip goes in dist/. Both are gitignored.
+RELEASE_DERIVED := build/DerivedData
+RELEASE_APP     := $(RELEASE_DERIVED)/Build/Products/Release/$(APP_SCHEME).app
+DIST_DIR        := dist
+INFO_PLIST      := VPNStatus/Info.plist
+
 # Format over all first-party Objective-C sources (skip build output & DerivedData).
 FORMAT_DIRS    := Common VPNStatus VPNStatusTests
 CLANG_FORMAT   := clang-format
@@ -45,7 +52,7 @@ SHELL := /bin/bash
 # Meta
 # ---------------------------------------------------------------------------
 .DEFAULT_GOAL := help
-.PHONY: help build build-app build-all rebuild clean \
+.PHONY: help build build-app build-release build-all rebuild clean bump-build \
         test test-unit test-ui \
         format format-check format-setup \
         run stop restart app-path \
@@ -64,16 +71,47 @@ help: ## Show this help
 # ---------------------------------------------------------------------------
 build: build-app ## Build the menu bar app (alias for build-app)
 
-build-app: ## Build the VPNStatus menu bar app
+bump-build: ## Increment CFBundleVersion and set CFBundleShortVersionString to <marketing>.<build>
+	@cur=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$(INFO_PLIST)"); \
+	case "$$cur" in ''|*[!0-9]*) echo "error: CFBundleVersion '$$cur' is not numeric"; exit 1;; esac; \
+	next=$$((cur + 1)); \
+	/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $$next" "$(INFO_PLIST)"; \
+	short=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$(INFO_PLIST)"); \
+	base="$${short%.$$cur}"; \
+	/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $$base.$$next" "$(INFO_PLIST)"; \
+	echo "Bumped build number $$cur -> $$next (version $$base.$$next)"
+
+build-app: bump-build ## Build the VPNStatus menu bar app (Debug)
 	$(XCODEBUILD) -scheme $(APP_SCHEME) $(UNSIGNED_FLAGS) build $(PIPE)
+	@app=$$($(MAKE) --no-print-directory app-path); \
+	echo "Built app: $$app"
+
+build-release: bump-build ## Build a Release .app, ad-hoc sign it, and package dist/<name>.zip
+	xcodebuild -project $(PROJECT) -scheme $(APP_SCHEME) -configuration Release \
+		-derivedDataPath $(RELEASE_DERIVED) $(UNSIGNED_FLAGS) build $(PIPE)
+	@if [ ! -d "$(RELEASE_APP)" ]; then \
+		echo "error: expected app not found at $(RELEASE_APP)"; exit 1; \
+	fi
+	@echo "Built app: $(RELEASE_APP)"
+	@# xcodebuild with signing disabled leaves the bundle unsealed (no
+	@# _CodeSignature/CodeResources), which macOS reports as "damaged" on
+	@# download. Ad-hoc seal it so the packaged app is self-consistent and runs.
+	@codesign --force --deep --sign - "$(RELEASE_APP)"
+	@codesign --verify --deep --strict "$(RELEASE_APP)"
+	@mkdir -p $(DIST_DIR)
+	@short=$$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$(RELEASE_APP)/Contents/Info.plist"); \
+	zip="$(DIST_DIR)/$(APP_SCHEME)-$$short.zip"; \
+	rm -f "$$zip"; \
+	ditto -c -k --sequesterRsrc --keepParent "$(RELEASE_APP)" "$$zip"; \
+	echo "Packaged zip: $$zip"
 
 build-all: build-app ## Build everything (currently just the app)
 
 rebuild: clean build-all ## Clean, then build everything
 
-clean: ## Delete build output (build/, DerivedData) and run xcodebuild clean
+clean: ## Delete build output (build/, DerivedData, dist/) and run xcodebuild clean
 	@echo "Removing local build output..."
-	rm -rf build DerivedData
+	rm -rf build DerivedData dist
 	rm -rf $(HOME)/Library/Developer/Xcode/DerivedData/VPN-*
 	$(XCODEBUILD) -scheme $(APP_SCHEME) clean $(PIPE)
 

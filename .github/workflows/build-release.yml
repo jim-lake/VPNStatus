@@ -1,19 +1,13 @@
 name: Build and Release
 
-# Manually triggered from the Actions tab. Builds the unsigned VPNStatus.app,
-# zips it, and publishes it as a GitHub release.
+# Manually triggered from the Actions tab. Runs `make build-release`, which bumps
+# the version, builds the ad-hoc-signed VPNStatus.app, and zips it; this workflow
+# then publishes that zip as a GitHub release. All version logic lives in the
+# Makefile / Info.plist: CFBundleVersion is the auto-incremented build number and
+# CFBundleShortVersionString is <marketing>.<build> (e.g. 3.2.316). The marketing
+# base (3.2) is only bumped by hand in VPNStatus/Info.plist.
 on:
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Release tag to create (e.g. v3.1). Defaults to v<MARKETING_VERSION>-<run number>."
-        required: false
-        type: string
-      prerelease:
-        description: "Mark the release as a prerelease."
-        required: false
-        default: true
-        type: boolean
 
 permissions:
   contents: write
@@ -24,61 +18,52 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Need write access to push the version bump back.
+          persist-credentials: true
 
       - name: Select latest stable Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
 
-      - name: Build (Release, unsigned)
-        run: |
-          set -euo pipefail
-          xcodebuild \
-            -project VPN.xcodeproj \
-            -scheme VPNStatus \
-            -configuration Release \
-            -derivedDataPath build/DerivedData \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            build
-
-      - name: Locate and package the app
+      - name: Build and package (make build-release)
         id: package
         run: |
           set -euo pipefail
-          APP_PATH="build/DerivedData/Build/Products/Release/VPNStatus.app"
-          if [ ! -d "$APP_PATH" ]; then
-            echo "error: expected app not found at $APP_PATH" >&2
-            find build/DerivedData/Build/Products -maxdepth 2 -name '*.app' || true
+          # make build-release bumps Info.plist, builds Release, ad-hoc seals the
+          # bundle, and writes dist/VPNStatus-<short>-<build>.zip. Keeping the logic
+          # in the Makefile avoids duplicating it here.
+          make build-release
+
+          PLIST="VPNStatus/Info.plist"
+          SHORT=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
+          ZIP="dist/VPNStatus-${SHORT}.zip"
+          if [ ! -f "$ZIP" ]; then
+            echo "error: expected zip not found at $ZIP" >&2
+            ls -la dist || true
             exit 1
           fi
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+          echo "zip_path=$PWD/$ZIP" >> "$GITHUB_OUTPUT"
 
-          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Contents/Info.plist")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-          ZIP_NAME="VPNStatus-${VERSION}.zip"
-          # ditto preserves the bundle structure and resource forks correctly.
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
-          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
-          echo "zip_path=$PWD/$ZIP_NAME" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve release tag
-        id: tag
+      - name: Commit build-number bump
         run: |
           set -euo pipefail
-          if [ -n "${{ inputs.tag }}" ]; then
-            TAG="${{ inputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VPNStatus/Info.plist
+          if git diff --cached --quiet; then
+            echo "No version change to commit."
           else
-            TAG="v${{ steps.package.outputs.version }}-${{ github.run_number }}"
+            git commit -m "ci: bump version to ${{ steps.package.outputs.short }} [skip ci]"
+            git push
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: VPNStatus ${{ steps.package.outputs.version }}
-          prerelease: ${{ inputs.prerelease }}
+          tag_name: v${{ steps.package.outputs.short }}
+          name: VPNStatus ${{ steps.package.outputs.short }}
           generate_release_notes: true
           files: ${{ steps.package.outputs.zip_path }}

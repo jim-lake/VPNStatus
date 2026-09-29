@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>$(MARKETING_VERSION)</string>
+	<string>3.2.320</string>
 	<key>CFBundleVersion</key>
-	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<string>320</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
@@ -29,15 +29,15 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2018-2024 Alexandre Colucci
 blog.timac.org</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>$(PRODUCT_NAME) requires location access to read the WiFi SSID.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>$(PRODUCT_NAME) requires location access to read the WiFi SSID.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>$(PRODUCT_NAME) requires location access to read the WiFi SSID.</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<key>NSLocationUsageDescription</key>
-	<string>$(PRODUCT_NAME) requires location access to read the WiFi SSID.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>$(PRODUCT_NAME) requires location access to read the WiFi SSID.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>$(PRODUCT_NAME) requires location access to read the WiFi SSID.</string>
 </dict>
 </plist>
