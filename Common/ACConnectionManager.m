@@ -7,6 +7,9 @@
 //
 
 #import "ACConnectionManager.h"
+
+#import <os/log.h>
+
 #import "ACNEService.h"
 #import "ACNEServicesManager.h"
 #import "ACPreferences.h"
@@ -87,6 +90,7 @@
   // Connect to the service if it is currently disconnected
   if(foundNEService != nil) {
     if([foundNEService state] == kSCNetworkConnectionDisconnected) {
+      os_log_info(OS_LOG_DEFAULT, "auto-connect connecting VPN '%{public}@' (%{public}@)", foundNEService.name, inServiceIdentifier);
       [foundNEService connect];
     }
   }
@@ -99,6 +103,8 @@
     self.alwaysAutoConnectTimer = nil;
   }
 
+  os_log_info(OS_LOG_DEFAULT, "(re)starting auto-connect timer with retry delay %lds", (long)[[ACPreferences sharedPreferences] alwaysConnectedRetryDelay]);
+
   self.alwaysAutoConnectTimer = [[NSTimer alloc] initWithFireDate:[NSDate date]
                                                          interval:[[ACPreferences sharedPreferences] alwaysConnectedRetryDelay]
                                                           repeats:YES
@@ -106,14 +112,18 @@
                                                               // Each time the timer fires, execute this block
                                                               if(![self isAutoConnectPaused]) {
                                                                 NSArray<NSString *> *alwaysConnectedServicesIdentifiers = [[ACPreferences sharedPreferences] alwaysConnectedServicesIdentifiers];
+                                                                os_log_info(OS_LOG_DEFAULT, "auto-connect timer fired, sweeping %lu always-connected service(s)", (unsigned long)[alwaysConnectedServicesIdentifiers count]);
                                                                 for(NSString *serviceIdentifier in alwaysConnectedServicesIdentifiers) {
                                                                   // If the current WiFi SSID is is the list of ignored SSID, we shouldn't auto connect
                                                                   if([self shouldPreventAutoConnectOnCurrentSSID]) {
+                                                                    os_log_info(OS_LOG_DEFAULT, "auto-connect skipping %{public}@ due to ignored SSID", serviceIdentifier);
                                                                     continue;
                                                                   }
 
                                                                   [self startConnectionForService:serviceIdentifier];
                                                                 }
+                                                              } else {
+                                                                os_log_info(OS_LOG_DEFAULT, "auto-connect timer fired but auto-connect is paused");
                                                               }
                                                             }];
 
@@ -124,6 +134,8 @@
 - (void)setAlwaysAutoConnect:(BOOL)inAlwaysAutoConnect forACNEService:(ACNEService *)inNEService {
   if(inNEService == nil)
     return;
+
+  os_log_info(OS_LOG_DEFAULT, "set always-auto-connect=%{public}s for VPN '%{public}@' (%{public}@)", inAlwaysAutoConnect ? "YES" : "NO", inNEService.name, [inNEService.configuration.identifier UUIDString]);
 
   // Save the preferences
   [[ACPreferences sharedPreferences] setAlwaysConnected:inAlwaysAutoConnect forServicesIdentifier:[inNEService.configuration.identifier UUIDString]];
@@ -180,6 +192,8 @@
   if([alwaysConnectedServicesIdentifiers count] <= 0)
     return;
 
+  os_log_info(OS_LOG_DEFAULT, "disconnecting all auto-connected services (%lu)", (unsigned long)[alwaysConnectedServicesIdentifiers count]);
+
   // Disconnect each service marked as always auto connecting
   NSArray<ACNEService *> *neServices = [[ACNEServicesManager sharedNEServicesManager] neServices];
   for(ACNEService *neService in neServices) {
@@ -213,6 +227,8 @@
   NSArray<NSString *> *alwaysConnectedServicesIdentifiers = [[ACPreferences sharedPreferences] alwaysConnectedServicesIdentifiers];
   if([alwaysConnectedServicesIdentifiers count] <= 0)
     return;
+
+  os_log_info(OS_LOG_DEFAULT, "connecting all auto-connected services (%lu)", (unsigned long)[alwaysConnectedServicesIdentifiers count]);
 
   // Connect each service marked as always auto connecting
   NSArray<ACNEService *> *neServices = [[ACNEServicesManager sharedNEServicesManager] neServices];

@@ -570,8 +570,11 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
 - (IBAction)connectService:(id)sender {
   ACNEService *neService = [self serviceForMenuItem:sender];
   if(neService == nil) {
+    os_log_info(OS_LOG_DEFAULT, "connectService: could not resolve a service from the menu item");
     return;
   }
+
+  os_log_info(OS_LOG_DEFAULT, "user action: connect VPN '%{public}@' (%{public}@)", neService.name, [self uuidForService:neService]);
 
   // Manually connecting through the app enables auto connect for this service.
   [[ACConnectionManager sharedManager] setAlwaysAutoConnect:YES forACNEService:neService];
@@ -584,8 +587,11 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
 - (IBAction)disconnectService:(id)sender {
   ACNEService *neService = [self serviceForMenuItem:sender];
   if(neService == nil) {
+    os_log_info(OS_LOG_DEFAULT, "disconnectService: could not resolve a service from the menu item");
     return;
   }
+
+  os_log_info(OS_LOG_DEFAULT, "user action: disconnect VPN '%{public}@' (%{public}@)", neService.name, [self uuidForService:neService]);
 
   // Manually disconnecting through the app disables auto connect for this
   // service so it is not immediately reconnected by the auto-connect timer.
@@ -603,7 +609,10 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
 - (IBAction)disconnectAll:(id)sender {
   ACConnectionManager *connectionManager = [ACConnectionManager sharedManager];
 
-  for(ACNEService *neService in [self connectedServices]) {
+  NSArray<ACNEService *> *connected = [self connectedServices];
+  os_log_info(OS_LOG_DEFAULT, "user action: disconnect all (%lu connected)", (unsigned long)[connected count]);
+
+  for(ACNEService *neService in connected) {
     [connectionManager setAlwaysAutoConnect:NO forACNEService:neService];
     [neService disconnect];
   }

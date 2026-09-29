@@ -7,6 +7,9 @@
 //
 
 #import "ACNEService.h"
+
+#import <os/log.h>
+
 #import "ACNEServicesManager.h"
 
 @implementation ACNEService
@@ -93,6 +96,8 @@
       self.sessionStatus = status;
       self.gotInitialSessionStatus = YES;
 
+      os_log_info(OS_LOG_DEFAULT, "VPN '%{public}@' (%{public}@) session status changed to %d", self.name, [self.configuration.identifier UUIDString], (int)status);
+
       // Post a notification to refresh the UI
       [[NSNotificationCenter defaultCenter] postNotificationName:kSessionStateChangedNotification object:nil];
     });
@@ -100,10 +105,12 @@
 }
 
 - (void)connect {
+  os_log_info(OS_LOG_DEFAULT, "connect VPN '%{public}@' (%{public}@)", self.name, [self.configuration.identifier UUIDString]);
   ne_session_start(_session);
 }
 
 - (void)disconnect {
+  os_log_info(OS_LOG_DEFAULT, "disconnect VPN '%{public}@' (%{public}@)", self.name, [self.configuration.identifier UUIDString]);
   ne_session_stop(_session);
 }
 
