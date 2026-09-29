@@ -18,8 +18,6 @@
 #import "ACConnectionManager.h"
 #import "ACMenuReconciler.h"
 
-#import "VPNStatus-Swift.h"
-
 @interface AppDelegate () <NSMenuDelegate>
 
 @property (strong) NSStatusItem *statusItem;
@@ -77,10 +75,6 @@
 
   // Make sure that the ACNEServicesManager singleton is created and load the configurations
   [self reloadConfigurations];
-
-  if(![[ACPreferences sharedPreferences] disabledCheckForUpdatesAutomatically]) {
-    [[UpdateManager shared] checkForUpdateWithShowUpToDateAlert:NO];
-  }
 
   // UI-test automation hook. Only installed when the app is launched with the
   // UITEST_AUTOMATION environment variable set (see VPNStatusUITests). A

@@ -20,8 +20,6 @@ NSString *const kServiceIgnoredVPNsKey = @"IgnoredVPNs";
 NSString *const kMinReconnectPrefKey = @"MinReconnect";
 NSString *const kMaxReconnectPrefKey = @"MaxReconnect";
 
-NSString *const kDisabledCheckForUpdatesAutomaticallyPrefKey = @"DisabledCheckForUpdatesAutomatically";
-NSString *const kSingleAutoConnectPrefKey = @"SingleAutoConnect";
 NSString *const kMenuBarImageTypePrefKey = @"MenuBarImageType";
 
 NSString *const kACConfigurationDidChange = @"kACConfigurationDidChange";
@@ -74,12 +72,6 @@ NSString *const kACMenuBarImageDidChange = @"kACMenuBarImageDidChange";
       [services addObject:updatedServiceDictionary];
 
       serviceFound = YES;
-    } else if(inAlwaysConnected && [self singleAutoConnect]) {
-      NSMutableDictionary *updatedServiceDictionary = [service mutableCopy];
-      updatedServiceDictionary[kServiceAlwaysConnectedKey] = [NSNumber numberWithBool:false];
-
-      [services removeObject:service];
-      [services addObject:updatedServiceDictionary];
     }
   }
 
@@ -192,22 +184,6 @@ NSString *const kACMenuBarImageDidChange = @"kACMenuBarImageDidChange";
   }
 
   [[NSUserDefaults standardUserDefaults] setInteger:maxReconnect forKey:kMaxReconnectPrefKey];
-}
-
-- (BOOL)disabledCheckForUpdatesAutomatically {
-  return [[NSUserDefaults standardUserDefaults] boolForKey:kDisabledCheckForUpdatesAutomaticallyPrefKey];
-}
-
-- (void)setDisabledCheckForUpdatesAutomatically:(BOOL)inValue {
-  [[NSUserDefaults standardUserDefaults] setBool:inValue forKey:kDisabledCheckForUpdatesAutomaticallyPrefKey];
-}
-
-- (BOOL)singleAutoConnect {
-  return [[NSUserDefaults standardUserDefaults] boolForKey:kSingleAutoConnectPrefKey];
-}
-
-- (void)setSingleAutoConnect:(BOOL)inValue {
-  [[NSUserDefaults standardUserDefaults] setBool:inValue forKey:kSingleAutoConnectPrefKey];
 }
 
 - (MenuBarImageType)menuBarImageType {

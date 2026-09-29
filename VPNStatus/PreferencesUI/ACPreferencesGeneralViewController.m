@@ -7,14 +7,11 @@
 #import "ACPreferencesGeneralViewController.h"
 
 #import "ACPreferences.h"
-#import "VPNStatus-Swift.h"
 
 @interface ACPreferencesGeneralViewController ()
 
 @property (weak) IBOutlet NSTextField *minReconnectField;
 @property (weak) IBOutlet NSTextField *maxReconnectField;
-@property (weak) IBOutlet NSButton *automaticCheckForUpdatesButton;
-@property (weak) IBOutlet NSButton *singleAutoConnectButton;
 @property (weak) IBOutlet NSPopUpButton *menuBarImagePopUpButton;
 
 @end
@@ -35,20 +32,6 @@
 
   [self.minReconnectField setIntegerValue:[[ACPreferences sharedPreferences] minReconnect]];
   [self.maxReconnectField setIntegerValue:[[ACPreferences sharedPreferences] maxReconnect]];
-
-  BOOL disabledCheckForUpdatesAutomatically = [[ACPreferences sharedPreferences] disabledCheckForUpdatesAutomatically];
-  if(disabledCheckForUpdatesAutomatically) {
-    [self.automaticCheckForUpdatesButton setState:NSControlStateValueOff];
-  } else {
-    [self.automaticCheckForUpdatesButton setState:NSControlStateValueOn];
-  }
-
-  BOOL singleAutoConnect = [[ACPreferences sharedPreferences] singleAutoConnect];
-  if(singleAutoConnect) {
-    [self.singleAutoConnectButton setState:NSControlStateValueOn];
-  } else {
-    [self.singleAutoConnectButton setState:NSControlStateValueOff];
-  }
 
   NSMenu *theMenu = self.menuBarImagePopUpButton.menu;
   for(NSInteger menuItemIndex = 0; menuItemIndex < theMenu.numberOfItems; menuItemIndex++) {
@@ -104,20 +87,6 @@
 
 - (IBAction)maxReconnectDidChange:(id)sender {
   [self saveReconnectBounds];
-}
-
-- (IBAction)doCheckForUpdates:(id)sender {
-  [[UpdateManager shared] checkForUpdateWithShowUpToDateAlert:YES];
-}
-
-- (IBAction)doCheckForUpdatesAutomatically:(id)sender {
-  NSButton *checkbox = (NSButton *)sender;
-  [[ACPreferences sharedPreferences] setDisabledCheckForUpdatesAutomatically:(checkbox.state != NSControlStateValueOn)];
-}
-
-- (IBAction)doSingleAutoConnect:(id)sender {
-  NSButton *checkbox = (NSButton *)sender;
-  [[ACPreferences sharedPreferences] setSingleAutoConnect:(checkbox.state != NSControlStateValueOff)];
 }
 
 - (IBAction)doChangeMenuBarImage:(id)sender {

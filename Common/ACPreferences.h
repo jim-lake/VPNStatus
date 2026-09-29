@@ -59,20 +59,6 @@ extern NSString *const kACMenuBarImageDidChange;
 
 
 /**
- Disable the check for updates
- */
-- (BOOL)disabledCheckForUpdatesAutomatically;
-- (void)setDisabledCheckForUpdatesAutomatically:(BOOL)inValue;
-
-
-/**
- Enable auto connecting to max one service.
- */
-- (BOOL)singleAutoConnect;
-- (void)setSingleAutoConnect:(BOOL)inValue;
-
-
-/**
  Menu Bar Images
  */
 
