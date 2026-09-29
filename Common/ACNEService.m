@@ -115,12 +115,15 @@
 }
 
 - (void)cancel {
-  os_log_info(OS_LOG_DEFAULT, "cancel VPN '%{public}@' (%{public}@)", self.name, [self.configuration.identifier UUIDString]);
-  ne_session_cancel(_session);
+  os_log_info(OS_LOG_DEFAULT, "cancel connecting VPN '%{public}@' (%{public}@)", self.name, [self.configuration.identifier UUIDString]);
 
-  // ne_session_cancel does not always drive the event handler the way
-  // start/stop do, so refresh the status explicitly to update the UI.
-  [self refreshSession];
+  // Aborting an in-progress connection is done with ne_session_stop, not
+  // ne_session_cancel. ne_session_cancel tears down the client session object
+  // (it is what -dealloc uses before ne_session_release); it does NOT stop the
+  // daemon's ongoing negotiation, so a Connecting session stays stuck at
+  // Connecting. ne_session_stop actually drives it Disconnecting -> Disconnected
+  // and fires the event handler, which refreshes the UI.
+  ne_session_stop(_session);
 }
 
 @end

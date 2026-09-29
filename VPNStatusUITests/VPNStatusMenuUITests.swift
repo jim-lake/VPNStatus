@@ -56,33 +56,52 @@ final class VPNStatusMenuUITests: XCTestCase {
 		return app.statusItems["VPNStatusItem"]
 	}
 
-	// Opens the status-item menu by clicking the status item and waits until the
-	// menu's rows are readable. Returns the status item element.
+	// Opens the status-item menu and HARD-GATES on it actually being open: this
+	// is a throwing precondition, so if the menu does not open the test aborts
+	// right here (before any measuring or assertions). A test must call this as
+	// its first step and `try` it.
 	//
-	// Clicking a menu-bar status item can occasionally register without opening
-	// the menu (e.g. if the app isn't frontmost yet), so we activate the app and
-	// retry the click a few times until the menu's Quit row appears.
+	// Clicking a menu-bar status item can register without opening the menu, so
+	// we activate the app and retry. A closed status menu still exposes its rows
+	// in the AX tree but with zero-size frames, so "open" is defined as the Quit
+	// row having a real (non-zero) on-screen frame — never mere existence.
 	@discardableResult
-	private func openStatusMenu(file: StaticString = #file, line: UInt = #line) -> XCUIElement {
+	private func openStatusMenu(file: StaticString = #file, line: UInt = #line) throws -> XCUIElement {
 		let item = statusItem()
 		XCTAssertTrue(item.waitForExistence(timeout: 10),
 					  "VPNStatus status item should appear in the menu bar", file: file, line: line)
 
 		let quit = item.menuItems["static.quit"]
-		for attempt in 0..<5 {
-			if quit.exists { break }
-			app.activate()
-			item.click()
-			if quit.waitForExistence(timeout: 3) { break }
-			// Dismiss any partial state and try again.
-			app.typeKey(.escape, modifierFlags: [])
-			usleep(500_000)
-			_ = attempt
+		func menuIsOpen() -> Bool {
+			return quit.exists && quit.frame.size.height > 1 && quit.frame.size.width > 1
 		}
 
-		XCTAssertTrue(quit.waitForExistence(timeout: 3),
-					  "Status menu should open and contain the Quit row", file: file, line: line)
+		for _ in 0..<8 {
+			if menuIsOpen() { break }
+			app.activate()
+			usleep(400_000)
+			item.click()
+			let deadline = Date().addingTimeInterval(3)
+			while Date() < deadline && !menuIsOpen() {
+				usleep(150_000)
+			}
+			if menuIsOpen() { break }
+			app.typeKey(.escape, modifierFlags: [])
+			usleep(400_000)
+		}
+
+		// HARD GATE: fail AND abort the test if the menu is not open. Nothing
+		// downstream is meaningful unless the menu actually rendered.
+		guard menuIsOpen() else {
+			XCTFail("MENU DID NOT OPEN — aborting. Quit row frame=\(quit.frame). Every menu test must fail here before measuring anything.",
+					file: file, line: line)
+			throw MenuError.didNotOpen
+		}
 		return item
+	}
+
+	private enum MenuError: Error {
+		case didNotOpen
 	}
 
 	private func dismissMenu() {
@@ -127,7 +146,7 @@ final class VPNStatusMenuUITests: XCTestCase {
 	// Opening the menu shows the static Settings and Quit items, located by their
 	// stable identifiers within the status item's own menu.
 	func testMenuShowsStaticItems() throws {
-		let item = openStatusMenu()
+		let item = try openStatusMenu()
 
 		let quit = item.menuItems["static.quit"]
 		let settings = item.menuItems["static.settings"]
@@ -145,7 +164,7 @@ final class VPNStatusMenuUITests: XCTestCase {
 	// name is carried in the action row's own title (there is no separate name
 	// label row any more).
 	func testMenuShowsAServiceActionRow() throws {
-		openStatusMenu()
+		try openStatusMenu()
 
 		guard let actionID = serviceActionIdentifier() else {
 			let none = statusItem().menuItems["service.none"]
@@ -179,7 +198,7 @@ final class VPNStatusMenuUITests: XCTestCase {
 	// longer see the status item). Reading the live VPN state is a stronger
 	// end-to-end assertion than re-reading the menu title anyway.
 	func testClickingServiceTogglesConnection() throws {
-		openStatusMenu()
+		try openStatusMenu()
 
 		guard let actionID = serviceActionIdentifier() else {
 			dismissMenu()
@@ -223,10 +242,92 @@ final class VPNStatusMenuUITests: XCTestCase {
 					   "After the second activation, the VPN should return to \(want2)")
 	}
 
+	// A connecting service renders a custom two-label row: the full "Connecting
+	// <name>..." title on the left and a grey "cancel" on the right. This asserts
+	// — reading the labels' rendered contents through XCUITest accessibility (by
+	// the identifiers set on the labels), NOT by any internal state — that the
+	// FULL title text is shown (never truncated) and the trailing text is exactly
+	// "cancel". Skips (does not fail) when no service is currently Connecting.
+	func testConnectingRowShowsFullTitleAndCancel() throws {
+		let item = try openStatusMenu()
+
+		// Find a connecting service row by its menu-item title.
+		let rows = item.menuItems.allElementsBoundByIndex.filter {
+			$0.identifier.hasPrefix("service.action.") && !$0.identifier.hasSuffix(".sep")
+		}
+		guard let connectingRow = rows.first(where: { $0.title.hasPrefix("Connecting ") }) else {
+			dismissMenu()
+			throw XCTSkip("No service is currently Connecting; start a slow/unreachable VPN to exercise this row.")
+		}
+
+		// The expected full title is the row's own menu-item title.
+		let expectedTitle = connectingRow.title
+		XCTAssertTrue(expectedTitle.hasSuffix("..."),
+					  "Connecting title should end with '...', got: \(expectedTitle)")
+
+		// Read the two labels' rendered contents via accessibility identifiers.
+		let primary = item.staticTexts["menuitem.primary"]
+		let secondary = item.staticTexts["menuitem.secondary"]
+		XCTAssertTrue(primary.waitForExistence(timeout: 3),
+					  "Connecting row should expose a 'menuitem.primary' label")
+		XCTAssertTrue(secondary.waitForExistence(timeout: 3),
+					  "Connecting row should expose a 'menuitem.secondary' label")
+
+		let shownTitle = (primary.value as? String) ?? primary.label
+		let shownTrailing = (secondary.value as? String) ?? secondary.label
+
+		// The rendered primary label must be the ENTIRE title — no truncation.
+		XCTAssertEqual(shownTitle, expectedTitle,
+					   "Primary label must show the full title with no truncation. expected='\(expectedTitle)' shown='\(shownTitle)'")
+		XCTAssertFalse(shownTitle.contains("\u{2026}"),
+					   "Primary label must not contain an ellipsis character (visual truncation): \(shownTitle)")
+		XCTAssertEqual(shownTrailing, "cancel",
+					   "Secondary label must show exactly 'cancel', got: \(shownTrailing)")
+
+		dismissMenu()
+	}
+
+	// Diagnostic: dumps the REAL open-menu geometry and rendered label contents
+	// for every readable row. Kept for tuning the custom row's layout; run it
+	// manually. Reads only external accessibility (frames + label values).
+	func testDumpOpenMenuMetrics() throws {
+		let item = try openStatusMenu()
+
+		// Wait for the custom row's label to actually render before reading/shooting.
+		let primary = item.staticTexts["menuitem.primary"]
+		_ = primary.waitForExistence(timeout: 5)
+		usleep(600_000)
+
+		let shot = XCUIScreen.main.screenshot()
+		let att = XCTAttachment(screenshot: shot)
+		att.name = "open-menu"
+		att.lifetime = .keepAlways
+		add(att)
+
+		let rows = item.menuItems.allElementsBoundByIndex
+		print("=== OPEN MENU METRICS BEGIN (rowCount=\(rows.count)) ===")
+		for row in rows {
+			let f = row.frame
+			print(String(format: "ROW id='%@' title='%@' frame={x=%.1f y=%.1f w=%.1f h=%.1f}",
+						 row.identifier, row.title, f.origin.x, f.origin.y, f.size.width, f.size.height))
+		}
+		print("=== OPEN MENU METRICS END ===")
+
+		print("=== STATICTEXTS BEGIN ===")
+		for st in item.staticTexts.allElementsBoundByIndex {
+			let f = st.frame
+			print(String(format: "STATICTEXT id='%@' value='%@' label='%@' frame={x=%.1f y=%.1f w=%.1f h=%.1f}",
+						 st.identifier, (st.value as? String) ?? "", st.label, f.origin.x, f.origin.y, f.size.width, f.size.height))
+		}
+		print("=== STATICTEXTS END ===")
+
+		dismissMenu()
+	}
+
 	// Activating Quit terminates the app: the app process reports not-running and
 	// the status item disappears.
 	func testQuitTerminatesApp() throws {
-		openStatusMenu()
+		try openStatusMenu()
 		XCTAssertTrue(statusItem().menuItems["static.quit"].exists, "Quit row should exist")
 		dismissMenu()
 

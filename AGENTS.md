@@ -14,7 +14,7 @@ bundles:
 | Target        | Type                | Purpose |
 |---------------|---------------------|---------|
 | `VPNStatus`   | Menu bar app (`LSUIElement`) | The one and only app. Lives in the macOS menu bar. |
-| `VPNStatusTests` | Unit test bundle | XCTest target hosted on `VPNStatus`: `GitHubRelease` version parsing + `ACMenuReconciler` behavior + reconnect backoff + Min/Max Reconnect preferences. |
+| `VPNStatusTests` | Unit test bundle | XCTest target hosted on `VPNStatus`: `GitHubRelease` version parsing + `ACMenuReconciler` behavior + per-service row mapping + reconnect backoff + Min/Max Reconnect preferences. |
 | `VPNStatusUITests` | UI test bundle | XCUITest target that drives the real `VPNStatus` menu-bar app end to end (status item, menu contents, connect/disconnect, quit). |
 
 > **`vpnutil` is no longer part of this repo.** The old in-tree `vpnutil` CLI
@@ -34,7 +34,7 @@ bundles:
   `VPNStatus-Swift.h` header and `VPNStatus-Bridging-Header.h`.
 - **UI:** AppKit/Cocoa with XIB files (`*.lproj/*.xib`). The update dialog is
   SwiftUI hosted inside an `NSWindowController`.
-- **Deployment target:** macOS 12.0. **Swift version:** 5.0.
+- **Deployment target:** macOS 15.0. **Swift version:** 5.0.
 - **Frameworks:** `NetworkExtension`, `SystemConfiguration`, `CoreLocation`,
   `CoreWLAN`, `Cocoa`/`AppKit`, `SwiftUI`.
 
@@ -63,7 +63,8 @@ xcodebuild -project VPN.xcodeproj -scheme VPNStatus -destination 'platform=macOS
 ```
 
 The `VPNStatusTests` unit bundle covers `GitHubRelease` version comparison
-(Swift), the menu reconciler (`ACMenuReconcilerTests.m`, Obj-C), the reconnect
+(Swift), the menu reconciler (`ACMenuReconcilerTests.m`, Obj-C), the per-service
+row title/action mapping (`AppDelegateServiceRowTests.m`), the reconnect
 backoff (`ACConnectionManagerBackoffTests.m`), and the Min/Max Reconnect
 preferences (`ACPreferencesReconnectTests.m`). The reconciler's `.m` is compiled
 into both the `VPNStatus` app target and the test target so the tests link its
@@ -120,9 +121,9 @@ The toggle test (`testClickingServiceTogglesConnection`) verifies the real VPN
 state by shelling out to `vpnutil`. `vpnutil` is **not** built from this repo any
 more — install it from Homebrew (`brew install timac/vpnstatus/vpnutil`). The
 test looks for it at `/opt/homebrew/bin/vpnutil` or `/usr/local/bin/vpnutil`; if
-it is absent the toggle test is skipped (the other four still run).
+it is absent the toggle test is skipped (the others still run).
 
-The five tests:
+The tests:
 
 - `testStatusItemAppears` — the `NSStatusItem` shows in the menu bar. It carries
   `accessibilityIdentifier = "VPNStatusItem"` (set on `statusItem.button` in
@@ -130,11 +131,50 @@ The five tests:
 - `testMenuShowsStaticItems` — opening the menu shows `Settings…`
   (`static.settings`) and `Quit VPNStatus` (`static.quit`).
 - `testMenuShowsAServiceActionRow` — the real VPN renders a
-  `Connect/Disconnect <name>` row plus a matching `service.name.<UUID>` label.
+  `Connect/Disconnect <name>` row.
 - `testClickingServiceTogglesConnection` — activates the service row and confirms
   via `vpnutil` that the real VPN flips state, then flips back
   (Connected → Disconnected → Connected).
+- `testConnectingRowShowsFullTitleAndCancel` — when a service is Connecting, the
+  row is the custom two-label view (see "Custom menu rows" below). Reads the two
+  labels' rendered contents **through XCUITest accessibility** (by the labels'
+  accessibility identifiers `menuitem.primary` / `menuitem.secondary`) and
+  asserts the primary label shows the **entire** title with no truncation (no `…`
+  ellipsis) and the secondary label is exactly `cancel`. Skipped (not failed)
+  when nothing is currently Connecting; start a slow/unreachable VPN to exercise
+  it (the dev machine has a `VPNStatus Test - Unreachable` config that lingers in
+  Connecting).
+- `testDumpOpenMenuMetrics` — diagnostic (not an assertion): opens the menu and
+  prints every row's frame plus every static-text label's identifier/value/frame,
+  and attaches a screenshot of the open menu. Use it when tuning the custom row's
+  layout. Reads only external accessibility (frames + label values), never
+  in-process/introspected state.
 - `testQuitTerminatesApp` — activates Quit and confirms the app terminates.
+
+**HARD GATE: the menu must actually open before any test measures anything.**
+`openStatusMenu()` is a `throws` precondition every menu test calls as its first
+line (`try openStatusMenu()`). It is a **hard stop**: if the menu does not open,
+the test fails and aborts *there*, before any reads or assertions.
+- "Open" is defined as the `static.quit` row having a **real, non-zero on-screen
+  frame** — NOT mere existence in the AX tree. A *closed* status menu still
+  exposes its rows in the accessibility tree with zero-size frames
+  (`{0,1080,0,0}`), so an existence check passes while the menu is actually shut.
+  Always gate on a non-zero frame.
+- It retries `app.activate()` + `statusItem().click()` up to 8×, waiting for the
+  real frame to appear each time, then `XCTFail(...) + throw` if still closed.
+  With `continueAfterFailure = false` this aborts immediately.
+- Never move past a failed open. Nothing downstream is meaningful if the menu
+  isn't really on screen.
+
+**Verify what is ACTUALLY SHOWN via accessibility, not introspection.** To check
+the rendered text of the custom row, read the label elements by their
+accessibility identifiers (`menuitem.primary`, `menuitem.secondary`) and assert
+their `value`. Do NOT infer correctness from the `NSMenuItem.title` model string
+(that is always the full string regardless of what's drawn) or from reading the
+app's own code/state. The labels never truncate (see "Custom menu rows"), so the
+rendered value equalling the full expected string is the proof.
+
+The five original tests:
 
 How it works (and why it is built this way — these are hard-won macOS
 constraints, don't "simplify" them away):
@@ -243,11 +283,24 @@ Recorded so the next agent does not repeat them:
 - **Don't run xcodebuild as root or with a custom `-derivedDataPath` under
   `sudo`.** Doing so creates root-owned build artifacts (e.g. under `/tmp`) that
   you then can't clean up without `sudo`. Run as the normal user.
-- **The raw Accessibility API (`AXUIElementPerformAction`, `kAXPressAction`)
-  needs the caller trusted for Accessibility**, which the transient UI-test
-  runner is not (`AXIsProcessTrusted()` is `false`; the app's AX element returns
-  no children). That is why activation goes through the in-app
-  `UITEST_AUTOMATION` hook instead.
+- **The raw Accessibility API is off-limits. Use XCUITest instead — it is not
+  optional.** To observe or drive the real running app (menu contents, item
+  frames, checkmark gutters, clicks, quit), you MUST use the XCUITest bundle
+  (`VPNStatusUITests`). Do not reach for the raw AX API
+  (`AXUIElementCopyAttributeValue`, `AXUIElementPerformAction`, walking the AX
+  tree, etc.) and do not build ad-hoc CLI probes — a `clang`-built CLI launched
+  from Terminal is never trusted for Accessibility (`AXIsProcessTrusted()` is
+  `false`), so it returns nothing.
+  - **Try to get the XCUITest working. Keep trying.** Fix the test, adjust the
+    in-app `UITEST_AUTOMATION` hook, add whatever the test needs.
+  - **If it fails multiple times, HARD STOP.** State plainly that you could not
+    get it working and stop. Do not work around it: no `tccutil`, no editing
+    `TCC.db` (SIP-protected), no permission re-prompts, no screenshot scraping,
+    no substitute probes. Those are dead ends.
+  - When the test needs the app's internal layout values, expose them from
+    inside the app (e.g. log them via `os_log`, or activate rows through the
+    `UITEST_AUTOMATION` distributed-notification hook). In-process code needs no
+    Accessibility grant.
 - **`.click()`/`.hover()` on a status-menu row hangs the test for ~60s** on the
   menu-open wait, and coordinate/keyboard approaches don't land on the rows.
   Don't try to make XCUITest click the popped-up status menu directly.
@@ -303,7 +356,17 @@ notifications, not delegates or callbacks (see "Notifications" below).
   - `refreshSession` queries status on `neServiceQueue`, then hops to the main
     queue to store `sessionStatus` and post `kSessionStateChangedNotification`.
   - Exposes `name`, `serverAddress`, `protocol` (IKEv2/IPSec/L2TP/…), `state`,
-    `connect`, `disconnect`.
+    `connect`, `disconnect`, `cancel`.
+  - **`connect`/`disconnect`/`cancel` and the `ne_session_*` truth.**
+    `connect` → `ne_session_start`, `disconnect` → `ne_session_stop`. `cancel`
+    (used to abort an in-progress `Connecting` attempt) ALSO uses
+    `ne_session_stop` — **not** `ne_session_cancel`. `ne_session_cancel` tears
+    down the client-side session object (it is what `-dealloc` uses before
+    `ne_session_release`); it does NOT stop the daemon's negotiation, so calling
+    it on a `Connecting` session leaves it stuck at `Connecting` forever. Only
+    `ne_session_stop` actually drives `Connecting → Disconnecting → Disconnected`
+    and fires the event handler that refreshes the UI. Do not "fix" `cancel` back
+    to `ne_session_cancel`.
 
 - **`ACNEServicesManager.{h,m}`** — Singleton that owns
   `NSMutableArray<ACNEService*> *neServices` and the serial
@@ -349,6 +412,32 @@ notifications, not delegates or callbacks (see "Notifications" below).
   its services and delegates the per-service action rows to it, so the tested
   code is the code that runs.
 
+  **Custom menu rows (`ACMenuItemTrailingTextView`, in the same file).** A
+  descriptor may carry `trailingText`; when set, the reconciler installs a custom
+  `NSMenuItem.view` that draws the row as a left title + right-aligned grey
+  trailing text (used for the `Connecting <name>...` row, whose trailing text is
+  `cancel`). Rules for this view — do not regress them:
+  - **Auto Layout, never hand-positioned.** The row is two `NSTextField` labels
+    plus a flexible gap: `[leadingInset][title]<<flex>>[>=gap][trailing][trailingInset]`.
+    Both labels have required horizontal compression resistance and no
+    line-break/truncation mode set, so the row is always sized to fit the FULL
+    text. Never measure strings by hand or set absolute x positions.
+  - **Auto-grow, never shrink/truncate.** `intrinsicContentSize` is derived from
+    the labels' own `fittingSize` (plus insets and the min gap). AppKit sizes the
+    menu to its widest item and only ever stretches rows wider, so the title
+    never truncates. A pure-Auto-Layout menu-item view with no intrinsic size
+    collapses to height 1 — the intrinsic size is required.
+  - **Tunable metrics** are `static const` at the top of the `.m`, measured
+    against real AppKit rows and confirmed via the UI test screenshot/labels:
+    `kMenuLeadingInset` (title inset), `kMenuCheckmarkGutter` (extra inset added
+    to ALL titles when any item in the menu is checked, mirroring AppKit's
+    checkmark gutter — a connected VPN shows a checkmark), `kMenuTrailingInset`
+    (trailing text → right edge), `kMenuInterItemGap` (minimum title↔trailing
+    gap), `kMenuVerticalPadding` (→ 24pt row height to match AppKit).
+  - **The labels carry accessibility identifiers** `menuitem.primary` (title) and
+    `menuitem.secondary` (trailing) so the UI test can read what is ACTUALLY
+    rendered and assert the full title shows with no truncation.
+
 ### `VPNStatus/` — the primary menu bar app
 
 - **`AppDelegate.{h,m}`** — The heart of the menu bar app.
@@ -363,12 +452,23 @@ notifications, not delegates or callbacks (see "Notifications" below).
     one is connected, otherwise a connection count), per-service
     connect/disconnect rows, and a static Settings/Quit block built once. Each
     per-service connect/disconnect row shows a **checkmark** while that service
-    is connected. There is no pause section, no per-service info block, and no
-    Location Services prompt in the menu.
+    is connected. A service that is **Connecting** renders instead as the custom
+    two-label row (`ACMenuItemTrailingTextView`): title `Connecting <name>...`
+    with a right-aligned grey `cancel` (see "Custom menu rows"); its action is
+    `cancelService:`, which aborts the attempt via `ACNEService.cancel`
+    (`ne_session_stop`). A `Disconnecting` service is a plain, non-actionable
+    `Disconnecting <name>...` row. There is no pause section, no per-service info
+    block, and no Location Services prompt in the menu.
+  - The per-service row title/action for each state lives in
+    `titleForServiceActionState:name:` / `actionForServiceActionState:` and is
+    unit-tested (`AppDelegateServiceRowTests`). Note both the `Connecting` and
+    `Disconnecting` titles end in three literal periods `...`, not the `…`
+    ellipsis character.
   - **Auto-connect is driven by the menu actions themselves.** Manually
     connecting a service (`connectService:`) marks it always-auto-connect;
     manually disconnecting (`disconnectService:`) clears its always-auto-connect
-    flag so the timer won't immediately reconnect it. "Disconnect All"
+    flag so the timer won't immediately reconnect it. Canceling a connecting
+    service (`cancelService:`) also clears the flag. "Disconnect All"
     (`disconnectAll:`) disconnects every connected service and clears their
     auto-connect flags. There is no "Always auto connect" toggle row and no
     pause controls.

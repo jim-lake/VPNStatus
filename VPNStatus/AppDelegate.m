@@ -370,7 +370,7 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
   case kSCNetworkConnectionConnected:
     return [NSString stringWithFormat:@"Disconnect %@", inName];
   case kSCNetworkConnectionConnecting:
-    return [NSString stringWithFormat:@"Cancel connecting %@", inName];
+    return [NSString stringWithFormat:@"Connecting %@...", inName];
   case kSCNetworkConnectionDisconnecting:
     return [NSString stringWithFormat:@"Disconnecting %@...", inName];
   case kSCNetworkConnectionInvalid:
@@ -465,12 +465,21 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
     // Checkmark when the service is connected.
     NSControlStateValue checkState = (state == kSCNetworkConnectionConnected) ? NSControlStateValueOn : NSControlStateValueOff;
 
-    [descriptors addObject:[ACMenuRowDescriptor descriptorWithKey:identifier
-                                                            title:title
-                                                           action:action
-                                                            state:checkState
-                                                          enabled:enabled
-                                                representedObject:uuid]];
+    ACMenuRowDescriptor *descriptor = [ACMenuRowDescriptor descriptorWithKey:identifier
+                                                                       title:title
+                                                                      action:action
+                                                                       state:checkState
+                                                                     enabled:enabled
+                                                           representedObject:uuid];
+
+    // While connecting, the row's action is "cancel the attempt"; surface that
+    // as grey, right-aligned trailing text via a custom menu-item view (see
+    // ACMenuItemTrailingTextView).
+    if(state == kSCNetworkConnectionConnecting) {
+      descriptor.trailingText = @"cancel";
+    }
+
+    [descriptors addObject:descriptor];
   }
 
   [descriptors addObject:[ACMenuRowDescriptor separatorDescriptorWithKey:@"service.action.sep"]];

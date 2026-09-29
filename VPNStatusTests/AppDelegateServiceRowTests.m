@@ -42,7 +42,7 @@
 
 // The key new behavior: a Connecting service can be canceled.
 - (void)testConnectingMapsToCancelAndIsActionable {
-  XCTAssertEqualObjects([self.delegate titleForServiceActionState:kSCNetworkConnectionConnecting name:@"VPN"], @"Cancel connecting VPN");
+  XCTAssertEqualObjects([self.delegate titleForServiceActionState:kSCNetworkConnectionConnecting name:@"VPN"], @"Connecting VPN...");
   SEL action = [self.delegate actionForServiceActionState:kSCNetworkConnectionConnecting];
   XCTAssertEqual(action, @selector(cancelService:));
   XCTAssertTrue(action != nil, @"Connecting rows must be actionable so the user can cancel");
