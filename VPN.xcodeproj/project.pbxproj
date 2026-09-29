@@ -41,6 +41,8 @@
 		D2B14E39BBC6C4B38DEE2C06 /* ACMenuReconcilerTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A699B7BABD7E0A3A14EA03DD /* ACMenuReconcilerTests.m */; };
 		BA00000000000000000011 /* ACConnectionManagerBackoffTests.m in Sources */ = {isa = PBXBuildFile; fileRef = BA00000000000000000001 /* ACConnectionManagerBackoffTests.m */; };
 		BA00000000000000000012 /* ACPreferencesReconnectTests.m in Sources */ = {isa = PBXBuildFile; fileRef = BA00000000000000000002 /* ACPreferencesReconnectTests.m */; };
+		BA00000000000000000021 /* ACNEServicesManagerFilterTests.m in Sources */ = {isa = PBXBuildFile; fileRef = BA00000000000000000020 /* ACNEServicesManagerFilterTests.m */; };
+		BA00000000000000000023 /* AppDelegateServiceRowTests.m in Sources */ = {isa = PBXBuildFile; fileRef = BA00000000000000000022 /* AppDelegateServiceRowTests.m */; };
 		DB452101CBF912CD9BB9CCC0 /* ACMenuReconciler.m in Sources */ = {isa = PBXBuildFile; fileRef = 639366C1E89A8D678ECDC707 /* ACMenuReconciler.m */; };
 /* End PBXBuildFile section */
 
@@ -110,6 +112,8 @@
 		A699B7BABD7E0A3A14EA03DD /* ACMenuReconcilerTests.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ACMenuReconcilerTests.m; sourceTree = "<group>"; };
 		BA00000000000000000001 /* ACConnectionManagerBackoffTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ACConnectionManagerBackoffTests.m; sourceTree = "<group>"; };
 		BA00000000000000000002 /* ACPreferencesReconnectTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ACPreferencesReconnectTests.m; sourceTree = "<group>"; };
+		BA00000000000000000020 /* ACNEServicesManagerFilterTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ACNEServicesManagerFilterTests.m; sourceTree = "<group>"; };
+		BA00000000000000000022 /* AppDelegateServiceRowTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AppDelegateServiceRowTests.m; sourceTree = "<group>"; };
 		BA00000000000000000003 /* ACConnectionManager_Internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ACConnectionManager_Internal.h; sourceTree = "<group>"; };
 		C9CBC4E527B5CDCA00D25554 /* CoreWLAN.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreWLAN.framework; path = System/Library/Frameworks/CoreWLAN.framework; sourceTree = SDKROOT; };
 		FA53907E20EF5FD600BA9AF7 /* NetworkMenusCommon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkMenusCommon.framework; path = ../../../../System/Library/PrivateFrameworks/NetworkMenusCommon.framework; sourceTree = "<group>"; };
@@ -190,6 +194,8 @@
 				A699B7BABD7E0A3A14EA03DD /* ACMenuReconcilerTests.m */,
 				BA00000000000000000001 /* ACConnectionManagerBackoffTests.m */,
 				BA00000000000000000002 /* ACPreferencesReconnectTests.m */,
+				BA00000000000000000020 /* ACNEServicesManagerFilterTests.m */,
+				BA00000000000000000022 /* AppDelegateServiceRowTests.m */,
 			);
 			path = VPNStatusTests;
 			sourceTree = "<group>";
@@ -424,6 +430,8 @@
 				D2B14E39BBC6C4B38DEE2C06 /* ACMenuReconcilerTests.m in Sources */,
 				BA00000000000000000011 /* ACConnectionManagerBackoffTests.m in Sources */,
 				BA00000000000000000012 /* ACPreferencesReconnectTests.m in Sources */,
+				BA00000000000000000021 /* ACNEServicesManagerFilterTests.m in Sources */,
+				BA00000000000000000023 /* AppDelegateServiceRowTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -541,6 +549,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/Common",
+					"$(SRCROOT)/VPNStatus",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 12.0;
@@ -572,6 +581,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/Common",
+					"$(SRCROOT)/VPNStatus",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 12.0;

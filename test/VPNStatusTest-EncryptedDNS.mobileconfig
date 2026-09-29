@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Test-only Encrypted DNS (DoH) configuration for VPNStatus.
+
+  macOS models Encrypted DNS profiles as NEConfiguration objects in the same
+  store as VPNs (this is exactly why "Google Public DNS Encrypted DNS over
+  HTTPS" used to appear in the VPNStatus menu). This profile is the NON-VPN
+  case: it has a DNSSettings payload and NO VPN payload, so its NEConfiguration
+  -VPN is nil.
+
+  Use it to confirm the type filter in ACNEServicesManager -processConfigurations:
+  works end to end: after installing this profile, it should NOT appear in the
+  VPNStatus menu, even though `vpnutil list` still enumerates it.
+
+  The DoH server (192.0.2.1, RFC 5737 TEST-NET-1) is unreachable on purpose, so
+  installing this will not actually change your DNS resolution.
+
+  Install:   open test/VPNStatusTest-EncryptedDNS.mobileconfig
+             then approve it in System Settings > General > VPN & Device Management
+  Verify:    vpnutil list        # lists "VPNStatus Test - Encrypted DNS"
+             (the VPNStatus menu should NOT list it)
+  Remove:    delete the profile in System Settings, or:
+             sudo profiles remove -identifier org.timac.VPNStatus.test.encrypted-dns
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>DNSSettings</key>
+			<dict>
+				<key>DNSProtocol</key>
+				<string>HTTPS</string>
+				<key>ServerURL</key>
+				<string>https://192.0.2.1/dns-query</string>
+			</dict>
+			<key>PayloadDescription</key>
+			<string>Test Encrypted DNS over HTTPS (unreachable server)</string>
+			<key>PayloadDisplayName</key>
+			<string>VPNStatus Test - Encrypted DNS</string>
+			<key>PayloadIdentifier</key>
+			<string>org.timac.VPNStatus.test.encrypted-dns.payload</string>
+			<key>PayloadType</key>
+			<string>com.apple.dnsSettings.managed</string>
+			<key>PayloadUUID</key>
+			<string>AC259A56-A6EE-4CEA-B6D0-836FF9A0CA7F</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Installs a test Encrypted DNS profile (a non-VPN NEConfiguration).</string>
+	<key>PayloadDisplayName</key>
+	<string>VPNStatus Test - Encrypted DNS</string>
+	<key>PayloadIdentifier</key>
+	<string>org.timac.VPNStatus.test.encrypted-dns</string>
+	<key>PayloadRemovalDisallowed</key>
+	<false/>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>ADD48A90-0EE5-47F7-84D3-AAA45DA12D83</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

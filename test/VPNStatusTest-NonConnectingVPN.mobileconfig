@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Test-only IKEv2 VPN configuration for VPNStatus.
+
+  This profile installs a real NetworkExtension VPN so it shows up in the
+  VPNStatus menu, but it is deliberately UNCONNECTABLE: the remote address is
+  192.0.2.1, from the RFC 5737 TEST-NET-1 block (192.0.2.0/24) that is reserved
+  for documentation/examples and is guaranteed never to route anywhere. Any
+  connect attempt just times out; nothing leaves the machine.
+
+  Because -VPN is populated (it is a genuine VPN payload), this configuration is
+  the "should be shown" case for ACNEServicesManager's type filter — contrast
+  with VPNStatusTest-EncryptedDNS.mobileconfig, which has no VPN payload and is
+  filtered out.
+
+  Install:   open test/VPNStatusTest-NonConnectingVPN.mobileconfig
+             then approve it in System Settings > General > VPN & Device Management
+  Verify:    vpnutil list        # should list "VPNStatus Test - Unreachable"
+  Remove:    delete the profile in System Settings, or:
+             sudo profiles remove -identifier org.timac.VPNStatus.test.unreachable-vpn
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>IKEv2</key>
+			<dict>
+				<key>AuthenticationMethod</key>
+				<string>SharedSecret</string>
+				<key>ChildSecurityAssociationParameters</key>
+				<dict>
+					<key>DiffieHellmanGroup</key>
+					<integer>14</integer>
+					<key>EncryptionAlgorithm</key>
+					<string>AES-256</string>
+					<key>IntegrityAlgorithm</key>
+					<string>SHA2-256</string>
+					<key>LifeTimeInMinutes</key>
+					<integer>1440</integer>
+				</dict>
+				<key>DeadPeerDetectionRate</key>
+				<string>Medium</string>
+				<key>DisableMOBIKE</key>
+				<integer>0</integer>
+				<key>DisableRedirect</key>
+				<integer>0</integer>
+				<key>EnableCertificateRevocationCheck</key>
+				<integer>0</integer>
+				<key>EnablePFS</key>
+				<integer>0</integer>
+				<key>IKESecurityAssociationParameters</key>
+				<dict>
+					<key>DiffieHellmanGroup</key>
+					<integer>14</integer>
+					<key>EncryptionAlgorithm</key>
+					<string>AES-256</string>
+					<key>IntegrityAlgorithm</key>
+					<string>SHA2-256</string>
+					<key>LifeTimeInMinutes</key>
+					<integer>1440</integer>
+				</dict>
+				<key>LocalIdentifier</key>
+				<string>vpnstatus-test-client</string>
+				<key>RemoteAddress</key>
+				<string>192.0.2.1</string>
+				<key>RemoteIdentifier</key>
+				<string>vpnstatus-test-unreachable</string>
+				<key>SharedSecret</key>
+				<string>not-a-real-secret</string>
+				<key>UseConfigurationAttributeInternalIPSubnet</key>
+				<integer>0</integer>
+			</dict>
+			<key>IPv4</key>
+			<dict>
+				<key>OverridePrimary</key>
+				<integer>0</integer>
+			</dict>
+			<key>PayloadDescription</key>
+			<string>Unconnectable test VPN (RFC 5737 TEST-NET-1 address)</string>
+			<key>PayloadDisplayName</key>
+			<string>VPNStatus Test - Unreachable</string>
+			<key>PayloadIdentifier</key>
+			<string>org.timac.VPNStatus.test.unreachable-vpn.payload</string>
+			<key>PayloadType</key>
+			<string>com.apple.vpn.managed</string>
+			<key>PayloadUUID</key>
+			<string>7AE1E415-8D00-40E0-8A56-1FA001E77949</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>Proxies</key>
+			<dict>
+				<key>HTTPEnable</key>
+				<integer>0</integer>
+				<key>HTTPSEnable</key>
+				<integer>0</integer>
+			</dict>
+			<key>UserDefinedName</key>
+			<string>VPNStatus Test - Unreachable</string>
+			<key>VPNType</key>
+			<string>IKEv2</string>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Installs a deliberately unconnectable IKEv2 VPN for testing VPNStatus.</string>
+	<key>PayloadDisplayName</key>
+	<string>VPNStatus Test - Unreachable VPN</string>
+	<key>PayloadIdentifier</key>
+	<string>org.timac.VPNStatus.test.unreachable-vpn</string>
+	<key>PayloadRemovalDisallowed</key>
+	<false/>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>072D2971-F611-4AE9-B0CB-7843A3FBA946</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

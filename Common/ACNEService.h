@@ -39,4 +39,8 @@
 - (void)connect;
 - (void)disconnect;
 
+// Cancel an in-progress connection (Connecting/Reasserting). Uses
+// ne_session_cancel, which aborts negotiation, rather than ne_session_stop.
+- (void)cancel;
+
 @end

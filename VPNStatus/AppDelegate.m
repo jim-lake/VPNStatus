@@ -7,6 +7,7 @@
 //
 
 #import "AppDelegate.h"
+#import "AppDelegate_Internal.h"
 
 #import <os/log.h>
 
@@ -369,7 +370,7 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
   case kSCNetworkConnectionConnected:
     return [NSString stringWithFormat:@"Disconnect %@", inName];
   case kSCNetworkConnectionConnecting:
-    return [NSString stringWithFormat:@"Connecting %@...", inName];
+    return [NSString stringWithFormat:@"Cancel connecting %@", inName];
   case kSCNetworkConnectionDisconnecting:
     return [NSString stringWithFormat:@"Disconnecting %@...", inName];
   case kSCNetworkConnectionInvalid:
@@ -384,8 +385,10 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
     return @selector(connectService:);
   case kSCNetworkConnectionConnected:
     return @selector(disconnectService:);
+  case kSCNetworkConnectionConnecting:
+    return @selector(cancelService:);
   default:
-    return nil; // transitional / invalid: not actionable
+    return nil; // disconnecting / invalid: not actionable
   }
 }
 
@@ -596,10 +599,23 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
   [self refreshMenu];
 }
 
-//
-// Disconnects every currently-connected service. Disabling auto connect for each
-// prevents the auto-connect timer from immediately reconnecting them.
-//
+- (IBAction)cancelService:(id)sender {
+  ACNEService *neService = [self serviceForMenuItem:sender];
+  if(neService == nil) {
+    os_log_info(OS_LOG_DEFAULT, "cancelService: could not resolve a service from the menu item");
+    return;
+  }
+
+  os_log_info(OS_LOG_DEFAULT, "user action: cancel connecting VPN '%{public}@' (%{public}@)", neService.name, [self uuidForService:neService]);
+
+  // Canceling a pending connection is a manual disconnect intent: clear auto
+  // connect so the timer does not immediately re-initiate the attempt.
+  [[ACConnectionManager sharedManager] setAlwaysAutoConnect:NO forACNEService:neService];
+
+  [neService cancel];
+
+  [self refreshMenu];
+}
 - (IBAction)disconnectAll:(id)sender {
   ACConnectionManager *connectionManager = [ACConnectionManager sharedManager];
 

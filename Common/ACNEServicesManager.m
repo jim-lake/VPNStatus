@@ -7,6 +7,7 @@
 //
 
 #import "ACNEServicesManager.h"
+#import "ACNEServicesManager_Internal.h"
 
 #import <os/log.h>
 
@@ -62,7 +63,12 @@
   NSArray<NSString *> *ignoredVPNs = [[ACPreferences sharedPreferences] ignoredVPNs];
 
   for(NEConfiguration *neConfiguration in inConfigurations) {
-    if([ignoredVPNs containsObject:neConfiguration.name]) {
+    if(neConfiguration.VPN == nil) {
+      // Not a VPN configuration: NEConfiguration also models Encrypted DNS
+      // (DoH/DoT) profiles and content filters, whose payload lives in other
+      // sub-objects and leaves -VPN nil. Only VPNs have a populated -VPN.
+      continue;
+    } else if([ignoredVPNs containsObject:neConfiguration.name]) {
       // Don't show the VPNs that should be ignored
       continue;
     } else if([neConfiguration.name hasPrefix:@"com.apple.preferences."]) {

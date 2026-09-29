@@ -114,4 +114,13 @@
   ne_session_stop(_session);
 }
 
+- (void)cancel {
+  os_log_info(OS_LOG_DEFAULT, "cancel VPN '%{public}@' (%{public}@)", self.name, [self.configuration.identifier UUIDString]);
+  ne_session_cancel(_session);
+
+  // ne_session_cancel does not always drive the event handler the way
+  // start/stop do, so refresh the status explicitly to update the UI.
+  [self refreshSession];
+}
+
 @end
