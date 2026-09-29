@@ -13,8 +13,6 @@ import os
 @objc public final class UpdateManager: NSObject {
 	@objc public static let shared = UpdateManager()
 
-	private let log = Logger(subsystem: "org.timac.VPNStatus", category: "update")
-
 	let gitHubURL = URL(string: "https://api.github.com/repos/Timac/VPNStatus/releases")
 	let currentRelease: GitHubRelease
 
@@ -57,7 +55,7 @@ import os
 		let requestURL = URLRequest(url: gitHubURL)
 		URLSession.shared.dataTask(with: requestURL) { (data, response, error) in
 			if let error = error {
-				self.log.notice("\(requestURL) returned: \(error.localizedDescription, privacy: .public)")
+				os_log("%{public}@ returned: %{public}@", requestURL.description, error.localizedDescription)
 			} else if let data = data {
 				var lastRelease: GitHubRelease?
 				let jsonDecoder = JSONDecoder()
@@ -76,12 +74,12 @@ import os
 
 				if let lastRelease = lastRelease {
 					if self.currentRelease < lastRelease {
-						self.log.info("A new version is available")
+						os_log(.info, "A new version is available")
 
 						if let skippedVersion = skippedVersion {
 							let skippedRelease = GitHubRelease(tag_name: skippedVersion, prerelease: false, draft: false, body: nil)
 							if lastRelease <= skippedRelease {
-								self.log.info("Skip the new version")
+								os_log(.info, "Skip the new version")
 								DispatchQueue.main.async {
 									completion(nil, nil, nil)
 								}
@@ -103,7 +101,7 @@ import os
 					}
 				}
 			} else {
-				self.log.notice("GitHub returned an empty data")
+				os_log("GitHub returned an empty data")
 				DispatchQueue.main.async {
 					completion(nil, nil, nil)
 					return

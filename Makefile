@@ -21,6 +21,13 @@ APP_SCHEME     := VPNStatus
 UNIT_SCHEME    := VPNStatus
 UITEST_SCHEME  := VPNStatusUITests
 
+# os_log predicate for the app's log entries. The Obj-C code logs to
+# OS_LOG_DEFAULT and the Swift code to subsystem org.timac.VPNStatus, so filter
+# by the process to capture both. How far back `make log` reaches is LOG_LAST
+# (any `log show --last` value, e.g. 5m, 2h, 1d).
+LOG_PREDICATE  := process == "$(APP_SCHEME)"
+LOG_LAST       := 1h
+
 # Disable code signing everywhere — the app works unsigned.
 UNSIGNED_FLAGS := CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 
@@ -56,6 +63,7 @@ SHELL := /bin/bash
         test test-unit test-ui \
         format format-check format-setup \
         run stop restart app-path \
+        log log-tail \
         list-schemes
 
 help: ## Show this help
@@ -187,6 +195,15 @@ stop: ## Quit any running VPNStatus instance
 	@pkill -x $(APP_SCHEME) 2>/dev/null && echo "Stopped running VPNStatus." || echo "VPNStatus was not running."
 
 restart: stop run ## Restart the app
+
+# ---------------------------------------------------------------------------
+# Logs (os_log)
+# ---------------------------------------------------------------------------
+log: ## Dump the app's os_log entries from the last $(LOG_LAST) (override LOG_LAST=5m|2h|1d)
+	log show --predicate '$(LOG_PREDICATE)' --last $(LOG_LAST) --info --debug --style compact
+
+log-tail: ## Stream the app's os_log entries live (Ctrl-C to stop)
+	log stream --predicate '$(LOG_PREDICATE)' --info --debug --style compact
 
 # ---------------------------------------------------------------------------
 # Misc
