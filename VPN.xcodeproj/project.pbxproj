@@ -45,6 +45,8 @@
 		A064771077363698F4A97525 /* ACMenuReconciler.m in Sources */ = {isa = PBXBuildFile; fileRef = 639366C1E89A8D678ECDC707 /* ACMenuReconciler.m */; };
 		C9CBC4E727B5CDE000D25554 /* CoreWLAN.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C9CBC4E527B5CDCA00D25554 /* CoreWLAN.framework */; platformFilter = maccatalyst; };
 		D2B14E39BBC6C4B38DEE2C06 /* ACMenuReconcilerTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A699B7BABD7E0A3A14EA03DD /* ACMenuReconcilerTests.m */; };
+		BA00000000000000000011 /* ACConnectionManagerBackoffTests.m in Sources */ = {isa = PBXBuildFile; fileRef = BA00000000000000000001 /* ACConnectionManagerBackoffTests.m */; };
+		BA00000000000000000012 /* ACPreferencesReconnectTests.m in Sources */ = {isa = PBXBuildFile; fileRef = BA00000000000000000002 /* ACPreferencesReconnectTests.m */; };
 		DB452101CBF912CD9BB9CCC0 /* ACMenuReconciler.m in Sources */ = {isa = PBXBuildFile; fileRef = 639366C1E89A8D678ECDC707 /* ACMenuReconciler.m */; };
 /* End PBXBuildFile section */
 
@@ -117,6 +119,9 @@
 		639366C1E89A8D678ECDC707 /* ACMenuReconciler.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ACMenuReconciler.m; sourceTree = "<group>"; };
 		879015363EDEEB561D25CE10 /* VPNStatusMenuUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VPNStatusMenuUITests.swift; sourceTree = "<group>"; };
 		A699B7BABD7E0A3A14EA03DD /* ACMenuReconcilerTests.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ACMenuReconcilerTests.m; sourceTree = "<group>"; };
+		BA00000000000000000001 /* ACConnectionManagerBackoffTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ACConnectionManagerBackoffTests.m; sourceTree = "<group>"; };
+		BA00000000000000000002 /* ACPreferencesReconnectTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ACPreferencesReconnectTests.m; sourceTree = "<group>"; };
+		BA00000000000000000003 /* ACConnectionManager_Internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ACConnectionManager_Internal.h; sourceTree = "<group>"; };
 		C9CBC4E527B5CDCA00D25554 /* CoreWLAN.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreWLAN.framework; path = System/Library/Frameworks/CoreWLAN.framework; sourceTree = SDKROOT; };
 		FA53907E20EF5FD600BA9AF7 /* NetworkMenusCommon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkMenusCommon.framework; path = ../../../../System/Library/PrivateFrameworks/NetworkMenusCommon.framework; sourceTree = "<group>"; };
 		FA53908120EF603700BA9AF7 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
@@ -206,6 +211,8 @@
 			children = (
 				024D90082BC71C04005BF977 /* GitHubReleaseTests.swift */,
 				A699B7BABD7E0A3A14EA03DD /* ACMenuReconcilerTests.m */,
+				BA00000000000000000001 /* ACConnectionManagerBackoffTests.m */,
+				BA00000000000000000002 /* ACPreferencesReconnectTests.m */,
 			);
 			path = VPNStatusTests;
 			sourceTree = "<group>";
@@ -246,6 +253,7 @@
 				02619DFD20F7F7BE00099652 /* ACPreferences.m */,
 				0231297920F9F8CE003F7540 /* ACConnectionManager.h */,
 				0231297A20F9F8CE003F7540 /* ACConnectionManager.m */,
+				BA00000000000000000003 /* ACConnectionManager_Internal.h */,
 				028DF1152AC7FA200084A822 /* ACLocationManager.h */,
 				028DF1142AC7FA200084A822 /* ACLocationManager.m */,
 				1ABCCAA438EEC7602AF60A0B /* ACMenuReconciler.h */,
@@ -440,6 +448,8 @@
 				024D90092BC71C04005BF977 /* GitHubReleaseTests.swift in Sources */,
 				DB452101CBF912CD9BB9CCC0 /* ACMenuReconciler.m in Sources */,
 				D2B14E39BBC6C4B38DEE2C06 /* ACMenuReconcilerTests.m in Sources */,
+				BA00000000000000000011 /* ACConnectionManagerBackoffTests.m in Sources */,
+				BA00000000000000000012 /* ACPreferencesReconnectTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

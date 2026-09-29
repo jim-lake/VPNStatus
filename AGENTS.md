@@ -14,7 +14,7 @@ bundles:
 | Target        | Type                | Purpose |
 |---------------|---------------------|---------|
 | `VPNStatus`   | Menu bar app (`LSUIElement`) | The one and only app. Lives in the macOS menu bar. |
-| `VPNStatusTests` | Unit test bundle | XCTest target hosted on `VPNStatus`: `GitHubRelease` version parsing + `ACMenuReconciler` behavior. |
+| `VPNStatusTests` | Unit test bundle | XCTest target hosted on `VPNStatus`: `GitHubRelease` version parsing + `ACMenuReconciler` behavior + reconnect backoff + Min/Max Reconnect preferences. |
 | `VPNStatusUITests` | UI test bundle | XCUITest target that drives the real `VPNStatus` menu-bar app end to end (status item, menu contents, connect/disconnect, quit). |
 
 > **`vpnutil` is no longer part of this repo.** The old in-tree `vpnutil` CLI
@@ -62,11 +62,15 @@ xcodebuild -project VPN.xcodeproj -scheme VPNStatus -configuration Debug build
 xcodebuild -project VPN.xcodeproj -scheme VPNStatus -destination 'platform=macOS' test
 ```
 
-The `VPNStatusTests` unit bundle covers `GitHubRelease` version comparison (Swift)
-and the menu reconciler (`ACMenuReconcilerTests.m`, Obj-C). The reconciler's
-`.m` is compiled into both the `VPNStatus` app target and the test target so the
-tests link its symbols directly without depending on the host app; the test
-target's `HEADER_SEARCH_PATHS` includes `$(SRCROOT)/Common`.
+The `VPNStatusTests` unit bundle covers `GitHubRelease` version comparison
+(Swift), the menu reconciler (`ACMenuReconcilerTests.m`, Obj-C), the reconnect
+backoff (`ACConnectionManagerBackoffTests.m`), and the Min/Max Reconnect
+preferences (`ACPreferencesReconnectTests.m`). The reconciler's `.m` is compiled
+into both the `VPNStatus` app target and the test target so the tests link its
+symbols directly; the backoff/preferences tests instead resolve their symbols
+against the host app (`BUNDLE_LOADER`) and reach `ACConnectionManager`'s internal
+backoff state through `Common/ACConnectionManager_Internal.h`. The test target's
+`HEADER_SEARCH_PATHS` includes `$(SRCROOT)/Common`.
 
 Shared schemes live in `VPN.xcodeproj/xcshareddata/xcschemes/`
 (`VPNStatus.xcscheme`, `VPNStatusUITests.xcscheme`); the `VPNStatus` scheme's
@@ -93,10 +97,24 @@ it opens the live status-item menu, reads the real rows, activates real menu
 actions, and verifies the real effect (VPN connect/disconnect, app quit).
 
 ```bash
-# UI tests — MUST run in the logged-in GUI session (see pitfall #1 below), unsigned.
+# UI tests — ad-hoc sign the runner (CODE_SIGNING_ALLOWED=YES).
 xcodebuild -project VPN.xcodeproj -scheme VPNStatusUITests -destination 'platform=macOS' \
-  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO test
+  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES test
 ```
+
+> **Why `CODE_SIGNING_ALLOWED=YES` for the UI scheme (unlike the app/unit
+> builds):** the stock Xcode `XCTRunner.app` template ships **unsigned**. With
+> `CODE_SIGNING_ALLOWED=NO`, xcodebuild leaves it unsigned and Gatekeeper rejects
+> the runner at launch with a "the application is damaged and can't be run"
+> dialog, so the UI tests never start. Allowing signing lets xcodebuild ad-hoc
+> sign the runner (`CODE_SIGN_IDENTITY="-"`), which launches cleanly. The app and
+> unit tests still build fine with `CODE_SIGNING_ALLOWED=NO`. Wrap UI-test runs in
+> a `timeout` so a wedged run can't block indefinitely.
+
+> **Rule for this repo's docs:** never add a line to any Markdown file (this file,
+> `AUTO_CONNECT.md`, or any other) claiming that tests cannot be run — for any
+> reason (SSH, "no GUI/Aqua session", session type, etc.). Tests can always be
+> run here. Do not reintroduce such claims.
 
 The toggle test (`testClickingServiceTogglesConnection`) verifies the real VPN
 state by shelling out to `vpnutil`. `vpnutil` is **not** built from this repo any
@@ -215,13 +233,6 @@ Recorded so the next agent does not repeat them:
 - **The signing error is a red herring.** The build fails with `No signing
   certificate "Mac Development"` unless you pass the `CODE_SIGNING_*` flags above.
   The app works unsigned; do not spend time on certificates/provisioning.
-- **UI automation needs the GUI (Aqua) session.** Running `xcodebuild ... test`
-  for the UI scheme **over SSH** fails with "The test runner failed to initialize
-  for UI testing (Timed out while enabling automation mode)". The controlling
-  process must be in the logged-in desktop session, not a `launchctl managername
-  == Background` / SSH session. Check with `echo $SSH_CONNECTION` and
-  `launchctl managername`. This is the real cause of "automation mode" timeouts —
-  **not** signing and **not** Accessibility grants.
 - **Do not fiddle with TCC / Accessibility to "fix" it.** Resetting or trying to
   add `kTCCServiceAccessibility` grants for the xctrunner (`tccutil reset`,
   editing `TCC.db`) does not help and actively makes things worse: it triggers
@@ -231,8 +242,7 @@ Recorded so the next agent does not repeat them:
   cannot hold a stable grant, so this path is a dead end. Leave TCC alone.
 - **Don't run xcodebuild as root or with a custom `-derivedDataPath` under
   `sudo`.** Doing so creates root-owned build artifacts (e.g. under `/tmp`) that
-  you then can't clean up without `sudo`, and it does not solve the session
-  problem. Run as the normal user in the GUI session.
+  you then can't clean up without `sudo`. Run as the normal user.
 - **The raw Accessibility API (`AXUIElementPerformAction`, `kAXPressAction`)
   needs the caller trusted for Accessibility**, which the transient UI-test
   runner is not (`AXIsProcessTrusted()` is `false`; the app's AX element returns
