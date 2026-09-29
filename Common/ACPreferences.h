@@ -46,11 +46,16 @@ extern NSString *const kACMenuBarImageDidChange;
 
 
 /**
- How often should we retry to connect to the VPN?
- Default is 120s
+ Exponential-backoff bounds (in seconds) for reconnecting an always-auto-connect
+ service. The per-service delay sequence after a drop is:
+   0 (immediate) -> minReconnect (floored to 1 when 0) -> clamp(previous*2, 1, maxReconnect) -> ...
+ minReconnect defaults to 0, maxReconnect defaults to 60. With the defaults this
+ is 0, 1, 2, 4, 8, 16, 32, 60, 60, ...
  */
-- (NSInteger)alwaysConnectedRetryDelay;
-- (void)setAlwaysConnectedRetryDelay:(NSInteger)retryDelay;
+- (NSInteger)minReconnect;
+- (void)setMinReconnect:(NSInteger)minReconnect;
+- (NSInteger)maxReconnect;
+- (void)setMaxReconnect:(NSInteger)maxReconnect;
 
 
 /**

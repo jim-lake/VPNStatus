@@ -100,11 +100,20 @@ final class VPNStatusMenuUITests: XCTestCase {
 	}
 
 	// Identifier of the per-service action row currently in the menu, or nil.
+	// Prefers a service that is currently Connected (title "Disconnect <name>"):
+	// such a row is provably a real togglable tunnel. Some NE configurations
+	// (e.g. DNS-over-HTTPS / content-filter proxies) expose a "Connect <name>"
+	// row but never report a Connected ne_session, so activating them can never
+	// satisfy a Connected assertion. Falling back to the first service row keeps
+	// the earlier behavior when nothing is currently connected.
 	private func serviceActionIdentifier() -> String? {
-		let rows = statusItem().menuItems.allElementsBoundByIndex
-		return rows.first {
+		let rows = statusItem().menuItems.allElementsBoundByIndex.filter {
 			$0.identifier.hasPrefix("service.action.") && !$0.identifier.hasSuffix(".sep")
-		}?.identifier
+		}
+		if let connected = rows.first(where: { $0.title.hasPrefix("Disconnect ") }) {
+			return connected.identifier
+		}
+		return rows.first?.identifier
 	}
 
 	// MARK: - Tests

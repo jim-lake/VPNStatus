@@ -11,7 +11,8 @@
 
 @interface ACPreferencesGeneralViewController ()
 
-@property (weak) IBOutlet NSTextField *retryDelayField;
+@property (weak) IBOutlet NSTextField *minReconnectField;
+@property (weak) IBOutlet NSTextField *maxReconnectField;
 @property (weak) IBOutlet NSButton *automaticCheckForUpdatesButton;
 @property (weak) IBOutlet NSButton *singleAutoConnectButton;
 @property (weak) IBOutlet NSPopUpButton *menuBarImagePopUpButton;
@@ -32,8 +33,8 @@
 - (void)viewDidLoad {
   [super viewDidLoad];
 
-  NSInteger retryDelay = [[ACPreferences sharedPreferences] alwaysConnectedRetryDelay];
-  [self.retryDelayField setIntegerValue:retryDelay];
+  [self.minReconnectField setIntegerValue:[[ACPreferences sharedPreferences] minReconnect]];
+  [self.maxReconnectField setIntegerValue:[[ACPreferences sharedPreferences] maxReconnect]];
 
   BOOL disabledCheckForUpdatesAutomatically = [[ACPreferences sharedPreferences] disabledCheckForUpdatesAutomatically];
   if(disabledCheckForUpdatesAutomatically) {
@@ -63,8 +64,30 @@
   [super viewWillDisappear];
 
   // Save when closing the window
-  NSInteger retryDelay = [self.retryDelayField integerValue];
-  [[ACPreferences sharedPreferences] setAlwaysConnectedRetryDelay:retryDelay];
+  [self saveReconnectBounds];
+}
+
+// Persist the min/max reconnect fields, keeping min <= max, and reflect any
+// clamping back into the fields.
+- (void)saveReconnectBounds {
+  NSInteger minReconnect = [self.minReconnectField integerValue];
+  NSInteger maxReconnect = [self.maxReconnectField integerValue];
+
+  if(minReconnect < 0) {
+    minReconnect = 0;
+  }
+  if(maxReconnect < 0) {
+    maxReconnect = 0;
+  }
+  if(minReconnect > maxReconnect) {
+    minReconnect = maxReconnect;
+  }
+
+  [[ACPreferences sharedPreferences] setMinReconnect:minReconnect];
+  [[ACPreferences sharedPreferences] setMaxReconnect:maxReconnect];
+
+  [self.minReconnectField setIntegerValue:minReconnect];
+  [self.maxReconnectField setIntegerValue:maxReconnect];
 }
 
 - (NSString *)identifier {
@@ -75,9 +98,12 @@
   return @"General";
 }
 
-- (IBAction)retryDelayDidChange:(id)sender {
-  NSInteger retryDelay = [sender integerValue];
-  [[ACPreferences sharedPreferences] setAlwaysConnectedRetryDelay:retryDelay];
+- (IBAction)minReconnectDidChange:(id)sender {
+  [self saveReconnectBounds];
+}
+
+- (IBAction)maxReconnectDidChange:(id)sender {
+  [self saveReconnectBounds];
 }
 
 - (IBAction)doCheckForUpdates:(id)sender {

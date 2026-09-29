@@ -17,7 +17,8 @@ NSString *const kServiceAlwaysConnectedKey = @"AlwaysConnected";
 NSString *const kServiceIgnoredSSIDsKey = @"IgnoredSSIDs";
 NSString *const kServiceIgnoredVPNsKey = @"IgnoredVPNs";
 
-NSString *const kAlwaysConnectedRetryDelayPrefKey = @"AlwaysConnectedRetryDelay";
+NSString *const kMinReconnectPrefKey = @"MinReconnect";
+NSString *const kMaxReconnectPrefKey = @"MaxReconnect";
 
 NSString *const kDisabledCheckForUpdatesAutomaticallyPrefKey = @"DisabledCheckForUpdatesAutomatically";
 NSString *const kSingleAutoConnectPrefKey = @"SingleAutoConnect";
@@ -155,20 +156,42 @@ NSString *const kACMenuBarImageDidChange = @"kACMenuBarImageDidChange";
   });
 }
 
-- (NSInteger)alwaysConnectedRetryDelay {
-  NSInteger retryDelay = [[NSUserDefaults standardUserDefaults] integerForKey:kAlwaysConnectedRetryDelayPrefKey];
-  if(retryDelay <= 0) {
-    // Default is 120s
-    retryDelay = 120;
+- (NSInteger)minReconnect {
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  if([defaults objectForKey:kMinReconnectPrefKey] == nil) {
+    // Default is 0 (first retry is immediate)
+    return 0;
   }
 
-  return retryDelay;
+  NSInteger value = [defaults integerForKey:kMinReconnectPrefKey];
+  return (value < 0) ? 0 : value;
 }
 
-- (void)setAlwaysConnectedRetryDelay:(NSInteger)retryDelay {
-  if(retryDelay > 0 && retryDelay <= 240) {
-    [[NSUserDefaults standardUserDefaults] setInteger:retryDelay forKey:kAlwaysConnectedRetryDelayPrefKey];
+- (void)setMinReconnect:(NSInteger)minReconnect {
+  if(minReconnect < 0) {
+    minReconnect = 0;
   }
+
+  [[NSUserDefaults standardUserDefaults] setInteger:minReconnect forKey:kMinReconnectPrefKey];
+}
+
+- (NSInteger)maxReconnect {
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  if([defaults objectForKey:kMaxReconnectPrefKey] == nil) {
+    // Default is 60s
+    return 60;
+  }
+
+  NSInteger value = [defaults integerForKey:kMaxReconnectPrefKey];
+  return (value < 0) ? 0 : value;
+}
+
+- (void)setMaxReconnect:(NSInteger)maxReconnect {
+  if(maxReconnect < 0) {
+    maxReconnect = 0;
+  }
+
+  [[NSUserDefaults standardUserDefaults] setInteger:maxReconnect forKey:kMaxReconnectPrefKey];
 }
 
 - (BOOL)disabledCheckForUpdatesAutomatically {

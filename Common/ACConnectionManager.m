@@ -10,6 +10,7 @@
 
 #import <os/log.h>
 
+#import "ACConnectionManager_Internal.h"
 #import "ACNEService.h"
 #import "ACNEServicesManager.h"
 #import "ACPreferences.h"
@@ -17,17 +18,11 @@
 // To get the current WiFi SSID (CWInterface)
 #import "CoreWLAN/CoreWLAN.h"
 
-@interface ACConnectionManager ()
+// Once a service has been continuously connected for this many seconds, its
+// reconnect backoff is reset so a future drop starts from an immediate retry.
+static const NSTimeInterval kBackoffStabilityResetSeconds = 120.0;
 
-// Timer to try to reconnect services set to always auto connect
-@property (strong) NSTimer *alwaysAutoConnectTimer;
-
-// Time when the pause for auto connect was started
-@property (assign) CFAbsoluteTime startPauseTime;
-
-// Duration of the pause
-@property (assign) NSInteger pauseDuration;
-
+@implementation ACServiceBackoff
 @end
 
 
@@ -45,10 +40,182 @@
 - (instancetype)init {
   self = [super init];
   if(self) {
-    [self startAlwaysAutoConnectTimer];
+    _backoffByServiceIdentifier = [[NSMutableDictionary alloc] init];
+
+    // React to every VPN session-state change: reconnect dropped always-connect
+    // services (with per-service backoff) and manage the stability reset.
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(sessionStateChanged:) name:kSessionStateChangedNotification object:nil];
   }
   return self;
 }
+
+- (void)dealloc {
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+#pragma mark - Backoff state
+
+- (ACServiceBackoff *)backoffForServiceIdentifier:(NSString *)inServiceIdentifier {
+  ACServiceBackoff *backoff = self.backoffByServiceIdentifier[inServiceIdentifier];
+  if(backoff == nil) {
+    backoff = [[ACServiceBackoff alloc] init];
+    backoff.nextDelay = 0;
+    self.backoffByServiceIdentifier[inServiceIdentifier] = backoff;
+  }
+  return backoff;
+}
+
+// Reset a service's backoff to the start of the sequence (next retry immediate)
+// and cancel any pending retry / stability timers.
+- (void)resetBackoffForServiceIdentifier:(NSString *)inServiceIdentifier {
+  ACServiceBackoff *backoff = self.backoffByServiceIdentifier[inServiceIdentifier];
+  if(backoff == nil) {
+    return;
+  }
+
+  os_log_info(OS_LOG_DEFAULT, "reset reconnect backoff for %{public}@", inServiceIdentifier);
+
+  [backoff.retryTimer invalidate];
+  backoff.retryTimer = nil;
+  [backoff.stabilityTimer invalidate];
+  backoff.stabilityTimer = nil;
+  backoff.nextDelay = 0;
+}
+
+// Advance the delay sequence: 0 (immediate) -> min -> clamp(previous*2, 1, max).
+// The growth path always floors to 1 so the sequence cannot get stuck at 0 when
+// min is 0 (otherwise doubling 0 stays 0 forever).
+- (NSInteger)advanceDelay:(NSInteger)inCurrentDelay {
+  NSInteger minReconnect = [[ACPreferences sharedPreferences] minReconnect];
+  NSInteger maxReconnect = [[ACPreferences sharedPreferences] maxReconnect];
+
+  NSInteger next;
+  if(inCurrentDelay <= 0) {
+    // Leaving the immediate (0) attempt: step to min, but never stall at 0 —
+    // if min is 0, floor to 1 so doubling can take over.
+    next = (minReconnect >= 1) ? minReconnect : 1;
+  } else {
+    next = inCurrentDelay * 2;
+    if(next < 1) {
+      next = 1;
+    }
+  }
+
+  if(next > maxReconnect) {
+    next = maxReconnect;
+  }
+  if(next < 0) {
+    next = 0;
+  }
+
+  return next;
+}
+
+#pragma mark - Session events
+
+- (void)sessionStateChanged:(NSNotification *)inNotification {
+  NSArray<NSString *> *alwaysConnectedServicesIdentifiers = [[ACPreferences sharedPreferences] alwaysConnectedServicesIdentifiers];
+  NSArray<ACNEService *> *neServices = [[ACNEServicesManager sharedNEServicesManager] neServices];
+
+  for(ACNEService *neService in neServices) {
+    NSString *serviceIdentifier = [neService.configuration.identifier UUIDString];
+    if(![alwaysConnectedServicesIdentifiers containsObject:serviceIdentifier]) {
+      // Not an always-connect service: nothing to schedule. If it happens to
+      // carry stale backoff state, drop it.
+      [self resetBackoffForServiceIdentifier:serviceIdentifier];
+      [self.backoffByServiceIdentifier removeObjectForKey:serviceIdentifier];
+      continue;
+    }
+
+    [self handleStateForAlwaysConnectService:neService];
+  }
+}
+
+- (void)handleStateForAlwaysConnectService:(ACNEService *)inService {
+  NSString *serviceIdentifier = [inService.configuration.identifier UUIDString];
+  SCNetworkConnectionStatus state = [inService state];
+  ACServiceBackoff *backoff = [self backoffForServiceIdentifier:serviceIdentifier];
+
+  switch(state) {
+  case kSCNetworkConnectionConnected:
+    // Connected: no pending retry needed. Start (or keep) the stability timer
+    // that resets the backoff once the connection has held long enough.
+    [backoff.retryTimer invalidate];
+    backoff.retryTimer = nil;
+    if(backoff.stabilityTimer == nil) {
+      __weak ACConnectionManager *weakSelf = self;
+      backoff.stabilityTimer = [NSTimer scheduledTimerWithTimeInterval:kBackoffStabilityResetSeconds
+                                                               repeats:NO
+                                                                 block:^(NSTimer *timer) {
+                                                                   os_log_info(OS_LOG_DEFAULT, "VPN %{public}@ stable for %.0fs; resetting backoff", serviceIdentifier, kBackoffStabilityResetSeconds);
+                                                                   [weakSelf resetBackoffForServiceIdentifier:serviceIdentifier];
+                                                                 }];
+    }
+    break;
+
+  case kSCNetworkConnectionDisconnected:
+    // Dropped: the stability window is broken; schedule a backed-off retry.
+    [backoff.stabilityTimer invalidate];
+    backoff.stabilityTimer = nil;
+    [self scheduleReconnectForService:inService];
+    break;
+
+  default:
+    // Connecting / disconnecting / invalid: transitional, take no action.
+    break;
+  }
+}
+
+// Schedule a reconnect for a dropped always-connect service after its current
+// backoff delay, then advance the delay for the next attempt. Idempotent: if a
+// retry is already pending for this service, leave it in place.
+- (void)scheduleReconnectForService:(ACNEService *)inService {
+  NSString *serviceIdentifier = [inService.configuration.identifier UUIDString];
+  ACServiceBackoff *backoff = [self backoffForServiceIdentifier:serviceIdentifier];
+
+  if(backoff.retryTimer != nil) {
+    // Already scheduled; don't stack retries for the same service.
+    return;
+  }
+
+  if([self shouldPreventAutoConnectOnCurrentSSID]) {
+    os_log_info(OS_LOG_DEFAULT, "auto-connect skipping %{public}@ due to ignored SSID", serviceIdentifier);
+    return;
+  }
+
+  NSInteger delay = backoff.nextDelay;
+  backoff.nextDelay = [self advanceDelay:delay];
+
+  os_log_info(OS_LOG_DEFAULT, "scheduling reconnect for VPN '%{public}@' (%{public}@) in %lds (next delay %lds)", inService.name, serviceIdentifier, (long)delay, (long)backoff.nextDelay);
+
+  __weak ACConnectionManager *weakSelf = self;
+  backoff.retryTimer = [NSTimer scheduledTimerWithTimeInterval:(NSTimeInterval)delay
+                                                       repeats:NO
+                                                         block:^(NSTimer *timer) {
+                                                           [weakSelf performScheduledReconnectForServiceIdentifier:serviceIdentifier];
+                                                         }];
+}
+
+- (void)performScheduledReconnectForServiceIdentifier:(NSString *)inServiceIdentifier {
+  ACServiceBackoff *backoff = self.backoffByServiceIdentifier[inServiceIdentifier];
+  backoff.retryTimer = nil;
+
+  // Re-validate: the service may have been unmarked, connected, or the SSID
+  // rules may now apply.
+  NSArray<NSString *> *alwaysConnectedServicesIdentifiers = [[ACPreferences sharedPreferences] alwaysConnectedServicesIdentifiers];
+  if(![alwaysConnectedServicesIdentifiers containsObject:inServiceIdentifier]) {
+    return;
+  }
+
+  if([self shouldPreventAutoConnectOnCurrentSSID]) {
+    os_log_info(OS_LOG_DEFAULT, "auto-connect skipping %{public}@ due to ignored SSID", inServiceIdentifier);
+    return;
+  }
+
+  [self startConnectionForService:inServiceIdentifier];
+}
+
+#pragma mark - Connect / disconnect
 
 - (void)toggleConnectionForService:(ACNEService *)inService {
   if(inService == nil)
@@ -96,76 +263,19 @@
   }
 }
 
-- (void)startAlwaysAutoConnectTimer {
-  // Recreate the timer
-  if(self.alwaysAutoConnectTimer != nil) {
-    [self.alwaysAutoConnectTimer invalidate];
-    self.alwaysAutoConnectTimer = nil;
-  }
-
-  os_log_info(OS_LOG_DEFAULT, "(re)starting auto-connect timer with retry delay %lds", (long)[[ACPreferences sharedPreferences] alwaysConnectedRetryDelay]);
-
-  self.alwaysAutoConnectTimer = [[NSTimer alloc] initWithFireDate:[NSDate date]
-                                                         interval:[[ACPreferences sharedPreferences] alwaysConnectedRetryDelay]
-                                                          repeats:YES
-                                                            block:^(NSTimer *timer) {
-                                                              // Each time the timer fires, execute this block
-                                                              if(![self isAutoConnectPaused]) {
-                                                                NSArray<NSString *> *alwaysConnectedServicesIdentifiers = [[ACPreferences sharedPreferences] alwaysConnectedServicesIdentifiers];
-                                                                os_log_info(OS_LOG_DEFAULT, "auto-connect timer fired, sweeping %lu always-connected service(s)", (unsigned long)[alwaysConnectedServicesIdentifiers count]);
-                                                                for(NSString *serviceIdentifier in alwaysConnectedServicesIdentifiers) {
-                                                                  // If the current WiFi SSID is is the list of ignored SSID, we shouldn't auto connect
-                                                                  if([self shouldPreventAutoConnectOnCurrentSSID]) {
-                                                                    os_log_info(OS_LOG_DEFAULT, "auto-connect skipping %{public}@ due to ignored SSID", serviceIdentifier);
-                                                                    continue;
-                                                                  }
-
-                                                                  [self startConnectionForService:serviceIdentifier];
-                                                                }
-                                                              } else {
-                                                                os_log_info(OS_LOG_DEFAULT, "auto-connect timer fired but auto-connect is paused");
-                                                              }
-                                                            }];
-
-  // Add the timer to the RunLoop
-  [[NSRunLoop currentRunLoop] addTimer:self.alwaysAutoConnectTimer forMode:NSDefaultRunLoopMode];
-}
-
 - (void)setAlwaysAutoConnect:(BOOL)inAlwaysAutoConnect forACNEService:(ACNEService *)inNEService {
   if(inNEService == nil)
     return;
 
-  os_log_info(OS_LOG_DEFAULT, "set always-auto-connect=%{public}s for VPN '%{public}@' (%{public}@)", inAlwaysAutoConnect ? "YES" : "NO", inNEService.name, [inNEService.configuration.identifier UUIDString]);
+  NSString *serviceIdentifier = [inNEService.configuration.identifier UUIDString];
+
+  os_log_info(OS_LOG_DEFAULT, "set always-auto-connect=%{public}s for VPN '%{public}@' (%{public}@)", inAlwaysAutoConnect ? "YES" : "NO", inNEService.name, serviceIdentifier);
 
   // Save the preferences
-  [[ACPreferences sharedPreferences] setAlwaysConnected:inAlwaysAutoConnect forServicesIdentifier:[inNEService.configuration.identifier UUIDString]];
+  [[ACPreferences sharedPreferences] setAlwaysConnected:inAlwaysAutoConnect forServicesIdentifier:serviceIdentifier];
 
-  // Start the Timer
-  [self startAlwaysAutoConnectTimer];
-}
-
-- (void)pauseAutoConnect:(NSInteger)inDuration {
-  self.startPauseTime = CFAbsoluteTimeGetCurrent();
-  self.pauseDuration = inDuration;
-}
-
-- (void)resumeAutoConnect {
-  self.startPauseTime = 0;
-  self.pauseDuration = 0;
-}
-
-- (BOOL)isAutoConnectPaused {
-  if(self.pauseDuration == NSIntegerMax) {
-    return YES;
-  } else if(self.startPauseTime + self.pauseDuration > CFAbsoluteTimeGetCurrent()) {
-    return YES;
-  }
-
-  return NO;
-}
-
-- (NSInteger)currentPauseDuration {
-  return self.pauseDuration;
+  // Toggling auto-connect (either direction) resets this service's backoff.
+  [self resetBackoffForServiceIdentifier:serviceIdentifier];
 }
 
 - (BOOL)isAtLeastOneServiceSetToAutoConnect {
@@ -202,7 +312,6 @@
     }
   }
 }
-
 
 /**
   Return YES if the current WiFi SSID is in the list of SSIDs to ignore
