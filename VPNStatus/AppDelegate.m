@@ -24,6 +24,13 @@
 @property (strong) NSStatusItem *statusItem;
 @property (strong) ACMenuReconciler *menuReconciler;
 
+// Ticks once per second to keep the connected rows' "h:mm:ss" duration live.
+// Runs ONLY while the menu is open AND at least one VPN is connected — a closed
+// menu shows nothing, and the title is recomputed from connectedDate whenever
+// the menu opens, so ticking while closed would be wasted work. Off otherwise.
+@property (strong) NSTimer *connectionDurationTimer;
+@property (assign) BOOL menuIsOpen;
+
 @end
 
 @implementation AppDelegate
@@ -283,6 +290,37 @@ static NSString *const kMenuIDQuitItem = @"static.quit";
   [self reconcileServiceSections];
 
   [self updateStatusItemIcon];
+
+  [self updateConnectionDurationTimer];
+}
+
+// Runs the per-second duration timer exactly while the menu is open AND
+// something is connected. The tick only rewrites the connected rows' titles in
+// place (via the reconciler), so an open menu doesn't flicker; a closed menu
+// shows nothing, so there is no reason to tick then (the title is recomputed
+// from connectedDate on open anyway).
+- (void)updateConnectionDurationTimer {
+  BOOL shouldRun = self.menuIsOpen && ([[self connectedServices] count] > 0);
+
+  if(shouldRun) {
+    if(self.connectionDurationTimer == nil) {
+      self.connectionDurationTimer = [NSTimer scheduledTimerWithTimeInterval:1.0
+                                                                      target:self
+                                                                    selector:@selector(connectionDurationTimerFired:)
+                                                                    userInfo:nil
+                                                                     repeats:YES];
+      // Keep ticking while the menu-tracking run loop is active.
+      [[NSRunLoop mainRunLoop] addTimer:self.connectionDurationTimer forMode:NSRunLoopCommonModes];
+    }
+  } else if(self.connectionDurationTimer != nil) {
+    [self.connectionDurationTimer invalidate];
+    self.connectionDurationTimer = nil;
+  }
+}
+
+- (void)connectionDurationTimerFired:(NSTimer *)inTimer {
+  // Only the per-service rows carry the live duration; reconcile them in place.
+  [self reconcileServiceSections];
 }
 
 #pragma mark - Menu reconciliation
@@ -367,11 +405,18 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
   [self removeItemsFromIndex:cursor untilAnchor:kMenuIDServicesSectionBegin inMenu:menu];
 }
 
-- (NSString *)titleForServiceActionState:(SCNetworkConnectionStatus)inState name:(NSString *)inName {
+- (NSString *)titleForServiceActionState:(SCNetworkConnectionStatus)inState name:(NSString *)inName connectedDate:(NSDate *)inConnectedDate {
   switch(inState) {
   case kSCNetworkConnectionDisconnected:
     return [NSString stringWithFormat:@"Connect %@", inName];
   case kSCNetworkConnectionConnected:
+    if(inConnectedDate != nil) {
+      NSTimeInterval elapsed = -[inConnectedDate timeIntervalSinceNow];
+      if(elapsed < 0) {
+        elapsed = 0;
+      }
+      return [NSString stringWithFormat:@"Disconnect %@ - %@", inName, [self elapsedStringForInterval:elapsed]];
+    }
     return [NSString stringWithFormat:@"Disconnect %@", inName];
   case kSCNetworkConnectionConnecting:
     return [NSString stringWithFormat:@"Disconnect %@ - Connecting...", inName];
@@ -381,6 +426,17 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
   default:
     return [NSString stringWithFormat:@"%@ is invalid", inName];
   }
+}
+
+- (NSString *)elapsedStringForInterval:(NSTimeInterval)inInterval {
+  if(inInterval < 0) {
+    inInterval = 0;
+  }
+  long long totalSeconds = (long long)inInterval;
+  long long hours = totalSeconds / 3600;
+  long long minutes = (totalSeconds % 3600) / 60;
+  long long seconds = totalSeconds % 60;
+  return [NSString stringWithFormat:@"%lld:%02lld:%02lld", hours, minutes, seconds];
 }
 
 - (SEL)actionForServiceActionState:(SCNetworkConnectionStatus)inState {
@@ -462,7 +518,7 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
     NSString *identifier = [kMenuIDServiceActionPrefix stringByAppendingString:uuid];
 
     SCNetworkConnectionStatus state = [neService state];
-    NSString *title = [self titleForServiceActionState:state name:neService.name];
+    NSString *title = [self titleForServiceActionState:state name:neService.name connectedDate:neService.connectedDate];
     SEL action = [self actionForServiceActionState:state];
     BOOL enabled = (action != nil);
 
@@ -540,6 +596,12 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
 #pragma mark - NSMenuDelegate
 
 - (void)menuWillOpen:(NSMenu *)menu {
+  self.menuIsOpen = YES;
+
+  // Start ticking the connected rows' live duration now that the menu is
+  // visible (no-op if nothing is connected).
+  [self updateConnectionDurationTimer];
+
   // The user just opened the menu. Kick off an asynchronous reload of the VPN
   // configurations so that VPNs added or removed from the system UI are picked
   // up. This does not block the menu from opening: it shows the last known
@@ -549,6 +611,13 @@ static NSString *const kMenuIDDisconnectAllItem = @"disconnectall.item";
   // We deliberately do not re-apply the auto-connect policy here: merely
   // opening the menu should not reconnect user-disconnected VPNs.
   [self reloadConfigurationsAndApplyAutoConnect:NO];
+}
+
+- (void)menuDidClose:(NSMenu *)menu {
+  self.menuIsOpen = NO;
+
+  // Nothing is visible while the menu is closed, so stop the per-second tick.
+  [self updateConnectionDurationTimer];
 }
 
 - (ACNEService *)serviceForMenuItem:(id)sender {

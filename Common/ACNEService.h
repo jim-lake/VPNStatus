@@ -23,6 +23,11 @@
 
 @property (assign) ne_session_status_t sessionStatus;
 
+// While the state is Connected, the moment the session last transitioned
+// (LastStatusChangeTime from ne_session_get_info type 2) — i.e. "connected
+// since". nil whenever the service is not Connected. See NE_PRIVATE_VPN.md.
+@property (strong, nullable) NSDate *connectedDate;
+
 // After a disconnect, YES if the last disconnect was a clean, user-initiated
 // stop (VPN.LastCause == 1, no LastDisconnectError); NO if it was an involuntary
 // drop (server death/abort, network change, collateral kill, ...) that

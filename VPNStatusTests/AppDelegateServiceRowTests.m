@@ -30,18 +30,40 @@
 }
 
 - (void)testDisconnectedMapsToConnect {
-  XCTAssertEqualObjects([self.delegate titleForServiceActionState:kSCNetworkConnectionDisconnected name:@"VPN"], @"Connect VPN");
+  XCTAssertEqualObjects([self.delegate titleForServiceActionState:kSCNetworkConnectionDisconnected name:@"VPN" connectedDate:nil], @"Connect VPN");
   XCTAssertEqual([self.delegate actionForServiceActionState:kSCNetworkConnectionDisconnected], @selector(connectService:));
 }
 
 - (void)testConnectedMapsToDisconnect {
-  XCTAssertEqualObjects([self.delegate titleForServiceActionState:kSCNetworkConnectionConnected name:@"VPN"], @"Disconnect VPN");
+  XCTAssertEqualObjects([self.delegate titleForServiceActionState:kSCNetworkConnectionConnected name:@"VPN" connectedDate:nil], @"Disconnect VPN");
   XCTAssertEqual([self.delegate actionForServiceActionState:kSCNetworkConnectionConnected], @selector(disconnectService:));
+}
+
+// A connected row with a known "connected since" date shows a live h:mm:ss.
+- (void)testConnectedWithDateShowsDuration {
+  NSDate *fiveSecondsAgo = [NSDate dateWithTimeIntervalSinceNow:-5];
+  NSString *title = [self.delegate titleForServiceActionState:kSCNetworkConnectionConnected name:@"VPN" connectedDate:fiveSecondsAgo];
+  XCTAssertEqualObjects(title, @"Disconnect VPN - 0:00:05");
+}
+
+- (void)testConnectedWithDateShowsHoursMinutesSeconds {
+  NSDate *start = [NSDate dateWithTimeIntervalSinceNow:-(1 * 3600 + 23 * 60 + 45)];
+  NSString *title = [self.delegate titleForServiceActionState:kSCNetworkConnectionConnected name:@"VPN" connectedDate:start];
+  XCTAssertEqualObjects(title, @"Disconnect VPN - 1:23:45");
+}
+
+- (void)testElapsedStringFormats {
+  XCTAssertEqualObjects([self.delegate elapsedStringForInterval:0], @"0:00:00");
+  XCTAssertEqualObjects([self.delegate elapsedStringForInterval:5], @"0:00:05");
+  XCTAssertEqualObjects([self.delegate elapsedStringForInterval:65], @"0:01:05");
+  XCTAssertEqualObjects([self.delegate elapsedStringForInterval:3661], @"1:01:01");
+  // Hours are not capped at 24.
+  XCTAssertEqualObjects([self.delegate elapsedStringForInterval:(26 * 3600)], @"26:00:00");
 }
 
 // The key new behavior: a Connecting service can be canceled.
 - (void)testConnectingMapsToCancelAndIsActionable {
-  XCTAssertEqualObjects([self.delegate titleForServiceActionState:kSCNetworkConnectionConnecting name:@"VPN"], @"Disconnect VPN - Connecting...");
+  XCTAssertEqualObjects([self.delegate titleForServiceActionState:kSCNetworkConnectionConnecting name:@"VPN" connectedDate:nil], @"Disconnect VPN - Connecting...");
   SEL action = [self.delegate actionForServiceActionState:kSCNetworkConnectionConnecting];
   XCTAssertEqual(action, @selector(cancelService:));
   XCTAssertTrue(action != nil, @"Connecting rows must be actionable so the user can cancel");
@@ -49,7 +71,7 @@
 
 // Disconnecting remains a non-actionable, informational row.
 - (void)testDisconnectingIsNotActionable {
-  XCTAssertEqualObjects([self.delegate titleForServiceActionState:kSCNetworkConnectionDisconnecting name:@"VPN"], @"Disconnecting VPN...");
+  XCTAssertEqualObjects([self.delegate titleForServiceActionState:kSCNetworkConnectionDisconnecting name:@"VPN" connectedDate:nil], @"Disconnecting VPN...");
   XCTAssertEqual([self.delegate actionForServiceActionState:kSCNetworkConnectionDisconnecting], (SEL)NULL);
 }
 

@@ -166,6 +166,20 @@ final class VPNStatusMenuUITests: XCTestCase {
 		return rows.first(where: { $0.title.contains(name) })?.identifier
 	}
 
+	// Extracts the VPN name from a per-service row title. A connected row's title
+	// is "Disconnect <name> - h:mm:ss" (live duration) or "Disconnect <name> -
+	// Connecting..."; a disconnected row's is "Connect <name>". Strip the leading
+	// verb and any trailing " - <suffix>" so callers get just <name>.
+	private func vpnName(fromRowTitle title: String) -> String {
+		var name = title
+			.replacingOccurrences(of: "Connect ", with: "")
+			.replacingOccurrences(of: "Disconnect ", with: "")
+		if let range = name.range(of: " - ") {
+			name = String(name[..<range.lowerBound])
+		}
+		return name
+	}
+
 	// Reopens the status menu in the same session (dismiss first), hard-gating on
 	// it actually rendering. Reopening a status menu and re-reading its rows works
 	// (verified): use this to observe the menu keeping up to date across state
@@ -262,10 +276,9 @@ final class VPNStatusMenuUITests: XCTestCase {
 			throw XCTSkip("Service is in a transitional state (\(startTitle)); skipping toggle test.")
 		}
 		let startedConnected = startTitle.hasPrefix("Disconnect ")
-		// The row title is "Connect <name>" / "Disconnect <name>".
-		let vpnName = startTitle
-			.replacingOccurrences(of: "Connect ", with: "")
-			.replacingOccurrences(of: "Disconnect ", with: "")
+		// The row title is "Connect <name>" / "Disconnect <name>" (a connected
+		// row also carries a trailing " - h:mm:ss" duration).
+		let vpnName = vpnName(fromRowTitle: startTitle)
 		dismissMenu()
 
 		guard let vpnutil = vpnutilPath() else {
@@ -322,9 +335,7 @@ final class VPNStatusMenuUITests: XCTestCase {
 		}
 		let connectRowID = startRow.identifier
 		let uuid = connectRowID.replacingOccurrences(of: "service.action.", with: "")
-		let vpnName = startRow.title
-			.replacingOccurrences(of: "Connect ", with: "")
-			.replacingOccurrences(of: "Disconnect ", with: "")
+		let vpnName = vpnName(fromRowTitle: startRow.title)
 		dismissMenu()
 
 		// Establish a clean baseline that survives app relaunch: terminate the
