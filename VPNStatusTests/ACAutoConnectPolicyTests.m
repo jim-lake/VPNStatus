@@ -108,4 +108,31 @@
   XCTAssertFalse([self isPersistedAutoConnect], @"connect request alone must not enable auto-connect before Connected");
 }
 
+- (void)testCleanDisconnectOfAlwaysConnectServiceDisablesAutoConnect {
+  [[ACPreferences sharedPreferences] setAlwaysConnected:YES forServicesIdentifier:self.serviceIdentifier];
+  XCTAssertTrue([self isPersistedAutoConnect]);
+
+  [self.policy handleAlwaysConnectState:kSCNetworkConnectionDisconnected wasClean:YES forService:self.service];
+
+  XCTAssertFalse([self isPersistedAutoConnect], @"a clean (user-initiated) disconnect must turn auto-connect off");
+}
+
+- (void)testInvoluntaryDisconnectOfAlwaysConnectServiceKeepsAutoConnect {
+  [[ACPreferences sharedPreferences] setAlwaysConnected:YES forServicesIdentifier:self.serviceIdentifier];
+  XCTAssertTrue([self isPersistedAutoConnect]);
+
+  [self.policy handleAlwaysConnectState:kSCNetworkConnectionDisconnected wasClean:NO forService:self.service];
+
+  XCTAssertTrue([self isPersistedAutoConnect], @"an involuntary drop must leave auto-connect on so it reconnects");
+}
+
+- (void)testConnectedAlwaysConnectServiceLeavesAutoConnectOn {
+  [[ACPreferences sharedPreferences] setAlwaysConnected:YES forServicesIdentifier:self.serviceIdentifier];
+  XCTAssertTrue([self isPersistedAutoConnect]);
+
+  [self.policy handleAlwaysConnectState:kSCNetworkConnectionConnected wasClean:NO forService:self.service];
+
+  XCTAssertTrue([self isPersistedAutoConnect], @"a Connected transition must not disable auto-connect");
+}
+
 @end

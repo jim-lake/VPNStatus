@@ -6,7 +6,7 @@
 //  real status-item menu, read the real rows, activate real rows, and observe
 //  the real VPN state change and the real app termination.
 //
-//  Two facts about automating an NSStatusItem menu on macOS drive this design:
+//  How this automates an NSStatusItem menu on macOS:
 //
 //  1. READING works. Once the status item is clicked, XCUITest can see the
 //     menu's rows and read their stable identifiers and titles. The app sets
@@ -14,20 +14,22 @@
 //        service.action.<UUID>  Connect/Disconnect <name>
 //        static.settings        Settings…
 //        static.quit            Quit VPNStatus
+//     A row's checkmark (NSMenuItem state) is NOT exposed — isSelected/value are
+//     always empty for popped-up status-menu rows — so assert on the title,
+//     which encodes the same state.
 //
-//  2. CLICKING does NOT work. A popped-up status-item menu exposes its rows with
-//     zero-size, non-hittable frames; XCUITest's click()/hover() on a row hangs
-//     ~60s waiting for a "menu open" notification that never fires, coordinate
-//     clicks don't land, keyboard events don't route to the tracking menu, and
-//     raw AXUIElementPerformAction requires Accessibility TCC trust the transient
-//     test runner does not have.
+//  2. ACTIVATING rows goes through a UI-test hook, not a click. Clicking a
+//     popped-up row DOES work (a row has a real frame and .click() dispatches
+//     its real action in ~1.3s), but the tests activate rows deterministically
+//     by asking the app — launched with UITEST_AUTOMATION=1 — to perform the
+//     row's action by identifier via a distributed notification. The app calls
+//     -[NSMenu performActionForItemAtIndex:], the exact code path a user click
+//     triggers (connectService:/disconnectService:/doQuit:). The menu CONTENTS
+//     the tests assert on are read from the live menu by XCUITest.
 //
-//     So to activate a row we ask the app (launched with UITEST_AUTOMATION=1) to
-//     perform the row's action by identifier via a distributed notification. The
-//     app calls -[NSMenu performActionForItemAtIndex:], which dispatches the row's
-//     real target/action — the exact code path a user click triggers
-//     (connectService:/disconnectService:/doQuit:). The menu CONTENTS that we act
-//     on are the ones XCUITest actually read from the live menu.
+//  Note: a CLOSED status menu still lists its rows in the AX tree but with
+//  zero-size frames, so "open" must be gated on a row having a real, non-zero
+//  frame (see openStatusMenu()), never mere existence.
 //
 
 import XCTest
@@ -155,6 +157,39 @@ final class VPNStatusMenuUITests: XCTestCase {
 		return rows.first?.identifier
 	}
 
+	// The identifier of the per-service row for a specific VPN name, or nil if no
+	// such row is currently in the (open) menu.
+	private func serviceRowIdentifier(forName name: String) -> String? {
+		let rows = statusItem().menuItems.allElementsBoundByIndex.filter {
+			$0.identifier.hasPrefix("service.action.") && !$0.identifier.hasSuffix(".sep")
+		}
+		return rows.first(where: { $0.title.contains(name) })?.identifier
+	}
+
+	// Reopens the status menu in the same session (dismiss first), hard-gating on
+	// it actually rendering. Reopening a status menu and re-reading its rows works
+	// (verified): use this to observe the menu keeping up to date across state
+	// changes without relaunching the app.
+	@discardableResult
+	private func reopenStatusMenu(file: StaticString = #file, line: UInt = #line) throws -> XCUIElement {
+		dismissMenu()
+		usleep(500_000)
+		return try openStatusMenu(file: file, line: line)
+	}
+
+	// Opens the menu and reads a specific service row's rendered title, then
+	// dismisses. Returns nil if the row is not present. (The NSMenuItem checkmark
+	// is NOT exposed to XCUITest for popped-up status-menu rows — isSelected and
+	// value are always empty — so the title is the observable state indicator.
+	// It fully encodes the checkmark anyway: "Disconnect <name>" is checked,
+	// "Connect <name>" is unchecked.)
+	private func readServiceRowTitle(name: String) throws -> String? {
+		try openStatusMenu()
+		defer { dismissMenu() }
+		guard let rowID = serviceRowIdentifier(forName: name) else { return nil }
+		return statusItem().menuItems[rowID].title
+	}
+
 	// MARK: - Tests
 
 	// The status item exists and is clickable — the menu-bar agent launched.
@@ -208,16 +243,8 @@ final class VPNStatusMenuUITests: XCTestCase {
 	// End-to-end connect/disconnect: activate the service action row (the real
 	// NSMenuItem action, exactly what a click dispatches) and verify the real VPN
 	// transitions to the opposite state, then activate again and verify it returns
-	// to the original state.
-	//
-	// We confirm the *effect* (the real VPN's connection state) via the vpnutil
-	// CLI, which reads the same ne_session status the menu reflects. We do not
-	// re-open the status menu to read the new title, because XCUITest can only
-	// see a popped-up NSStatusItem menu on the first open per session: after the
-	// first open/close cycle the app's statusItems query returns empty (the app
-	// keeps running and functioning — verified by appState — but XCUITest can no
-	// longer see the status item). Reading the live VPN state is a stronger
-	// end-to-end assertion than re-reading the menu title anyway.
+	// to the original state. The effect is confirmed via the vpnutil CLI, which
+	// reads the same ne_session status the menu reflects.
 	func testClickingServiceTogglesConnection() throws {
 		try openStatusMenu()
 
@@ -264,6 +291,107 @@ final class VPNStatusMenuUITests: XCTestCase {
 		let seen2 = waitForVPNStatus(vpnutil: vpnutil, name: vpnName, desired: want2, timeout: 60)
 		XCTAssertEqual(seen2, want2,
 					   "After the second activation, the VPN should return to \(want2)")
+	}
+
+	// Clean-disconnect disables auto-connect. Connect the test VPN through the
+	// app (which arms auto-connect and, on reaching Connected, commits it), then
+	// disconnect it OUT-OF-BAND via the vpnutil CLI — a clean, user-initiated
+	// stop. The app must NOT auto-reconnect it, and the menu row must track the
+	// state the whole time via its title: "Connect <name>" -> "Disconnect <name>"
+	// -> back to "Connect <name>", staying disconnected. (The title fully encodes
+	// the checkmark: Connected shows "Disconnect <name>" with a checkmark; the
+	// checkmark itself is not readable through XCUITest, the title is.)
+	//
+	// Requires the local test VPN target (test/target_vpn) reachable. Skips if it
+	// is absent or won't connect.
+	func testCleanCLIDisconnectDisablesAutoConnect() throws {
+		guard let vpnutil = vpnutilPath() else {
+			throw XCTSkip("vpnutil not found; install it with `brew install timac/vpnstatus/vpnutil`.")
+		}
+
+		// Locate the test-vpn row (only the local strongSwan target is safe to
+		// drive) and learn its name + UUID.
+		try openStatusMenu()
+		let testRows = statusItem().menuItems.allElementsBoundByIndex.filter {
+			$0.identifier.hasPrefix("service.action.") && !$0.identifier.hasSuffix(".sep") &&
+			$0.title.contains("test-vpn-")
+		}
+		guard let startRow = testRows.first else {
+			dismissMenu()
+			throw XCTSkip("No 'test-vpn-*' service present; stand up test/target_vpn to run this test.")
+		}
+		let connectRowID = startRow.identifier
+		let uuid = connectRowID.replacingOccurrences(of: "service.action.", with: "")
+		let vpnName = startRow.title
+			.replacingOccurrences(of: "Connect ", with: "")
+			.replacingOccurrences(of: "Disconnect ", with: "")
+		dismissMenu()
+
+		// Establish a clean baseline that survives app relaunch: terminate the
+		// app, disconnect the VPN, and clear ITS persisted always-auto-connect
+		// flag (a prior run may have committed it, which would make the app
+		// auto-reconnect on launch). Then relaunch fresh.
+		app.terminate()
+		runVpnutil(vpnutil, ["stop", vpnName])
+		_ = waitForVPNStatus(vpnutil: vpnutil, name: vpnName, desired: "Disconnected", timeout: 30)
+		clearPersistedAutoConnect(uuid: uuid)
+		app.launch()
+
+		guard vpnStatus(vpnutil: vpnutil, name: vpnName) == "Disconnected" else {
+			throw XCTSkip("Test VPN '\(vpnName)' would not settle Disconnected for a clean baseline.")
+		}
+
+		// Before: Connect <name>.
+		if let beforeTitle = try readServiceRowTitle(name: vpnName) {
+			XCTAssertTrue(beforeTitle.hasPrefix("Connect "),
+						  "Before connecting, row should read 'Connect <name>', got: \(beforeTitle)")
+		} else {
+			XCTFail("test-vpn row disappeared before connecting")
+		}
+
+		// Connect THROUGH THE APP (arms auto-connect; commits on Connected).
+		try openStatusMenu()
+		activateRow(connectRowID)
+		dismissMenu()
+
+		let connected = waitForVPNStatus(vpnutil: vpnutil, name: vpnName, desired: "Connected", timeout: 60)
+		guard connected == "Connected" else {
+			throw XCTSkip("Test VPN '\(vpnName)' did not connect (saw \(connected)); target may be unreachable.")
+		}
+
+		// Menu tracks Connected: Disconnect <name>.
+		if let midTitle = try readServiceRowTitle(name: vpnName) {
+			XCTAssertTrue(midTitle.hasPrefix("Disconnect "),
+						  "While connected, row should read 'Disconnect <name>', got: \(midTitle)")
+		} else {
+			XCTFail("test-vpn row disappeared while connected")
+		}
+
+		// Now disconnect OUT-OF-BAND via the CLI — a clean, user-initiated stop.
+		runVpnutil(vpnutil, ["stop", vpnName])
+
+		let disconnected = waitForVPNStatus(vpnutil: vpnutil, name: vpnName, desired: "Disconnected", timeout: 60)
+		XCTAssertEqual(disconnected, "Disconnected",
+					   "The clean CLI stop should leave the VPN Disconnected")
+
+		// The core assertion: it must STAY disconnected — no auto-reconnect. Poll
+		// long enough to cover an immediate backoff retry (the loop's first retry
+		// is immediate). Any Connecting/Connected observed here is a failure.
+		let watchDeadline = Date().addingTimeInterval(30)
+		while Date() < watchDeadline {
+			let s = vpnStatus(vpnutil: vpnutil, name: vpnName)
+			XCTAssertEqual(s, "Disconnected",
+						   "After a clean CLI disconnect the app must NOT reconnect; saw \(s)")
+			usleep(2_000_000)
+		}
+
+		// After: back to Connect <name> — the menu kept up to date.
+		if let afterTitle = try readServiceRowTitle(name: vpnName) {
+			XCTAssertTrue(afterTitle.hasPrefix("Connect "),
+						  "After the clean disconnect, row should return to 'Connect <name>', got: \(afterTitle)")
+		} else {
+			XCTFail("test-vpn row disappeared after disconnect")
+		}
 	}
 
 	// A connecting service renders as a plain NSMenuItem titled
@@ -404,6 +532,81 @@ final class VPNStatusMenuUITests: XCTestCase {
 			"/usr/local/bin/vpnutil",    // Intel Homebrew
 		]
 		return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+	}
+
+	// Runs vpnutil with the given arguments, ignoring output. Used for `stop`.
+	@discardableResult
+	private func runVpnutil(_ vpnutil: String, _ args: [String]) -> Bool {
+		let proc = Process()
+		proc.executableURL = URL(fileURLWithPath: vpnutil)
+		proc.arguments = args
+		proc.standardOutput = Pipe()
+		proc.standardError = Pipe()
+		do {
+			try proc.run()
+			proc.waitUntilExit()
+			return true
+		} catch {
+			return false
+		}
+	}
+
+	// Clears the persisted always-auto-connect flag for one service UUID so a
+	// fresh app launch won't auto-reconnect it. The app stores a `Services` array
+	// of {Identifier, AlwaysConnected} dicts in its NSUserDefaults domain; edit
+	// the matching element in place via PlistBuddy while the app is not running.
+	// Best-effort: no-ops if the plist or service isn't present.
+	private func clearPersistedAutoConnect(uuid: String) {
+		let domain = "org.timac.VPNStatus"
+		let plist = ("~/Library/Preferences/\(domain).plist" as NSString).expandingTildeInPath
+		guard let count = plistBuddyInt("Print :Services", plist: plist) else { return }
+		for i in 0..<count {
+			if let id = plistBuddyString("Print :Services:\(i):Identifier", plist: plist), id == uuid {
+				_ = plistBuddy("Set :Services:\(i):AlwaysConnected 0", plist: plist)
+				// cfprefsd caches this domain; a direct plist edit can be ignored
+				// or clobbered unless the cache is dropped. Restarting cfprefsd
+				// forces the next launch to re-read from disk.
+				let kill = Process()
+				kill.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+				kill.arguments = ["cfprefsd"]
+				kill.standardOutput = Pipe()
+				kill.standardError = Pipe()
+				try? kill.run()
+				kill.waitUntilExit()
+				return
+			}
+		}
+	}
+
+	@discardableResult
+	private func plistBuddy(_ command: String, plist: String) -> String? {
+		let proc = Process()
+		proc.executableURL = URL(fileURLWithPath: "/usr/libexec/PlistBuddy")
+		proc.arguments = ["-c", command, plist]
+		let pipe = Pipe()
+		proc.standardOutput = pipe
+		proc.standardError = Pipe()
+		do {
+			try proc.run()
+			proc.waitUntilExit()
+		} catch {
+			return nil
+		}
+		let data = pipe.fileHandleForReading.readDataToEndOfFile()
+		return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+	}
+
+	private func plistBuddyString(_ command: String, plist: String) -> String? {
+		guard let out = plistBuddy(command, plist: plist), !out.contains("Does Not Exist"), !out.isEmpty else { return nil }
+		return out
+	}
+
+	// Counts the elements of the Services array by probing indices (PlistBuddy has
+	// no direct count for an array via one command that returns an int cleanly).
+	private func plistBuddyInt(_ command: String, plist: String) -> Int? {
+		// `Print :Services` prints the whole array; count "Identifier =" entries.
+		guard let out = plistBuddy(command, plist: plist) else { return nil }
+		return out.components(separatedBy: "Identifier =").count - 1
 	}
 
 	// Runs `vpnutil status <name>` and returns the reported status word

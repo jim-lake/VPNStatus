@@ -6,6 +6,7 @@
 #import "ACDefines.h"
 #import "ACNEService.h"
 #import "ACNEServicesManager.h"
+#import "ACPreferences.h"
 
 @implementation ACAutoConnectPolicy
 
@@ -96,13 +97,35 @@
 }
 
 - (void)sessionStateChanged:(NSNotification *)inNotification {
+  NSArray<NSString *> *alwaysConnectedServicesIdentifiers = [[ACPreferences sharedPreferences] alwaysConnectedServicesIdentifiers];
+
   NSArray<ACNEService *> *neServices = [[ACNEServicesManager sharedNEServicesManager] neServices];
   for(ACNEService *neService in neServices) {
     NSString *serviceIdentifier = [self identifierForService:neService];
+
     if([self isArmedServiceIdentifier:serviceIdentifier]) {
       [self handleState:[neService state] forService:neService];
+      continue;
+    }
+
+    // An always-auto-connect service that is cleanly (user-initiated) stopped
+    // should have auto-connect turned off, which also cancels the reconnect
+    // loop. Involuntary drops (server death, network change, ...) are left for
+    // ACConnectionManager to reconnect.
+    if([alwaysConnectedServicesIdentifiers containsObject:serviceIdentifier]) {
+      [self handleAlwaysConnectState:[neService state] wasClean:[neService lastDisconnectWasClean] forService:neService];
     }
   }
+}
+
+- (void)handleAlwaysConnectState:(SCNetworkConnectionStatus)inState wasClean:(BOOL)inWasClean forService:(ACNEService *)inService {
+  if(inState != kSCNetworkConnectionDisconnected || !inWasClean) {
+    return;
+  }
+
+  NSString *serviceIdentifier = [self identifierForService:inService];
+  os_log_info(OS_LOG_DEFAULT, "auto-connect VPN '%{public}@' (%{public}@) was cleanly disconnected; disabling auto-connect and cancelling reconnect", inService.name, serviceIdentifier);
+  [[ACConnectionManager sharedManager] setAlwaysAutoConnect:NO forACNEService:inService];
 }
 
 - (void)handleState:(SCNetworkConnectionStatus)inState forService:(ACNEService *)inService {

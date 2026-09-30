@@ -92,15 +92,59 @@
 
 - (void)refreshSession {
   ne_session_get_status(_session, [[ACNEServicesManager sharedNEServicesManager] neServiceQueue], ^(ne_session_status_t status) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-      self.sessionStatus = status;
-      self.gotInitialSessionStatus = YES;
+    if(SCNetworkConnectionGetStatusFromNEStatus(status) == kSCNetworkConnectionDisconnected) {
+      // Disconnected: read the extended status to learn WHY, so the
+      // auto-connect policy can distinguish a clean user stop (leave it
+      // disconnected, drop auto-connect) from an involuntary drop (reconnect).
+      // Stay on neServiceQueue for the info query, then finish on the main queue.
+      ne_session_get_info(_session, NESessionInfoTypeExtendedStatus, [[ACNEServicesManager sharedNEServicesManager] neServiceQueue], ^(xpc_object_t _Nullable info) {
+        BOOL wasClean = [self disconnectWasCleanFromInfo:info];
+        [self finishRefreshWithStatus:status lastDisconnectWasClean:wasClean];
+      });
+      return;
+    }
 
-      os_log_info(OS_LOG_DEFAULT, "VPN '%{public}@' (%{public}@) session status changed to %d", self.name, [self.configuration.identifier UUIDString], (int)status);
+    [self finishRefreshWithStatus:status lastDisconnectWasClean:NO];
+  });
+}
 
-      // Post a notification to refresh the UI
-      [[NSNotificationCenter defaultCenter] postNotificationName:kSessionStateChangedNotification object:nil];
-    });
+// A clean, user-initiated stop is VPN.LastCause == 1 with NO LastDisconnectError.
+// Any other cause, or the presence of a LastDisconnectError, is an involuntary
+// drop. If the info dictionary is missing the cause entirely, treat it as NOT
+// clean so auto-connect errs toward reconnecting. See NE_PRIVATE_VPN.md.
+- (BOOL)disconnectWasCleanFromInfo:(xpc_object_t _Nullable)inInfo {
+  if(inInfo == NULL || xpc_get_type(inInfo) != XPC_TYPE_DICTIONARY) {
+    return NO;
+  }
+
+  size_t errorLength = 0;
+  if(xpc_dictionary_get_data(inInfo, "LastDisconnectError", &errorLength) != NULL && errorLength > 0) {
+    return NO;
+  }
+
+  xpc_object_t vpn = xpc_dictionary_get_value(inInfo, "VPN");
+  if(vpn == NULL || xpc_get_type(vpn) != XPC_TYPE_DICTIONARY) {
+    return NO;
+  }
+
+  xpc_object_t lastCause = xpc_dictionary_get_value(vpn, "LastCause");
+  if(lastCause == NULL || xpc_get_type(lastCause) != XPC_TYPE_INT64) {
+    return NO;
+  }
+
+  return xpc_int64_get_value(lastCause) == NELastCauseCleanUserStop;
+}
+
+- (void)finishRefreshWithStatus:(ne_session_status_t)inStatus lastDisconnectWasClean:(BOOL)inWasClean {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    self.sessionStatus = inStatus;
+    self.lastDisconnectWasClean = inWasClean;
+    self.gotInitialSessionStatus = YES;
+
+    os_log_info(OS_LOG_DEFAULT, "VPN '%{public}@' (%{public}@) session status changed to %d (lastDisconnectWasClean=%{public}s)", self.name, [self.configuration.identifier UUIDString], (int)inStatus, inWasClean ? "YES" : "NO");
+
+    // Post a notification to refresh the UI
+    [[NSNotificationCenter defaultCenter] postNotificationName:kSessionStateChangedNotification object:nil];
   });
 }
 

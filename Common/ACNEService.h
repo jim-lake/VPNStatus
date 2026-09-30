@@ -23,6 +23,13 @@
 
 @property (assign) ne_session_status_t sessionStatus;
 
+// After a disconnect, YES if the last disconnect was a clean, user-initiated
+// stop (VPN.LastCause == 1, no LastDisconnectError); NO if it was an involuntary
+// drop (server death/abort, network change, collateral kill, ...) that
+// auto-connect should recover from. Meaningful only while the state is
+// Disconnected; established on the disconnect event via ne_session_get_info.
+@property (assign) BOOL lastDisconnectWasClean;
+
 // init
 - (instancetype)initWithConfiguration:(NEConfiguration *)inConfiguration;
 

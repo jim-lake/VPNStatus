@@ -18,13 +18,28 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 INSTALL_USER="${LIMA_USER:-$(ls /home | head -1)}"
 INSTALL_USER_HOME="$(eval echo ~"$INSTALL_USER")"
 
-# Every build gets a unique stamp so the profile, the macOS VPN entry, the
-# client identity/CN, and the keychain label are all NEW each time. This avoids
-# stale certs lingering in the login keychain from a previous build (macOS keeps
-# the first-installed identity for a given name, which silently breaks IKE_AUTH
-# after a CA rebuild). A fresh name means you always know the installed profile
-# is the latest, and old ones can simply be deleted.
-BUILD_STAMP="$(date +%Y%m%d%H%M%S)"
+# The build stamp names the profile, the macOS VPN entry, the client
+# identity/CN, and the keychain label. It is generated ONCE (on the first
+# provision) and then PERSISTED in the VM at /etc/vpn-target/build_stamp, so
+# every later boot REUSES the same stamp. This is critical: Lima re-runs this
+# provision block on EVERY boot, and if the stamp changed each time the profile
+# name / client_id / swanctl remote.id would all change, which (a) makes
+# ike-setup.sh's client_pki_exists check miss the existing p12 and rebuild the
+# whole PKI, and (b) invalidates the profile already installed on macOS. A
+# stable, persisted stamp lets stop/start reuse the SAME certs and profile, so a
+# reboot does NOT force a reinstall. A fresh stamp is only minted when no
+# persisted one exists (first provision) or the PKI is otherwise rebuilt.
+STAMP_DIR=/etc/vpn-target
+STAMP_FILE="$STAMP_DIR/build_stamp"
+mkdir -p "$STAMP_DIR"
+if [ -s "$STAMP_FILE" ]; then
+  BUILD_STAMP="$(cat "$STAMP_FILE")"
+  echo "provision: reusing persisted build stamp = $BUILD_STAMP"
+else
+  BUILD_STAMP="$(date +%Y%m%d%H%M%S)"
+  echo "$BUILD_STAMP" > "$STAMP_FILE"
+  echo "provision: minted new build stamp = $BUILD_STAMP"
+fi
 VPN_DISPLAY_NAME="VPNStatusTestTarget-$BUILD_STAMP"
 # One split-tunnel profile that routes only the test net (10.199.0.0/16). The
 # route doesn't touch the host LAN, so connecting won't disrupt SSH into the VM.

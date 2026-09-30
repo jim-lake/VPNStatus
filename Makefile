@@ -8,7 +8,8 @@
 #   * The app builds and runs UNSIGNED. All xcodebuild targets pass
 #     CODE_SIGNING_* flags so a missing "Mac Development" certificate is not a
 #     problem (see AGENTS.md).
-#   * UI tests must run from the logged-in GUI (Aqua) session, not over SSH.
+#   * `make test` runs the UI tests (the priority — they drive the real app).
+#     `make unit-test` runs the unit tests.
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -28,8 +29,24 @@ UITEST_SCHEME  := VPNStatusUITests
 LOG_PREDICATE  := process == "$(APP_SCHEME)"
 LOG_LAST       := 1h
 
-# Disable code signing everywhere — the app works unsigned.
+# Disable code signing everywhere — the app works unsigned. This applies to the
+# UI-test scheme too: on this project the UI tests run and pass with
+# CODE_SIGNING_ALLOWED=NO (verified end to end). Do NOT switch the UI scheme to
+# CODE_SIGNING_ALLOWED=YES without re-verifying it is actually necessary.
 UNSIGNED_FLAGS := CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+
+# Wrap UI runs in a timeout so a wedged automation run can't block indefinitely.
+UITEST_TIMEOUT := 600
+
+# UI tests are the exception: the stock XCTRunner.app ships UNSIGNED, and with
+# CODE_SIGNING_ALLOWED=NO Gatekeeper rejects it ("the application is damaged")
+# so the run never starts. Allow signing so xcodebuild ad-hoc signs the runner
+# (CODE_SIGN_IDENTITY="-"), which launches cleanly. See AGENTS.md.
+UITEST_FLAGS := CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES
+
+# UI runs are wrapped in a timeout so a wedged automation run can't block
+# indefinitely (see AGENTS.md).
+UITEST_TIMEOUT := 600
 
 XCODEBUILD     := xcodebuild -project $(PROJECT) -configuration $(CONFIGURATION)
 
@@ -60,7 +77,7 @@ SHELL := /bin/bash
 # ---------------------------------------------------------------------------
 .DEFAULT_GOAL := help
 .PHONY: help build build-app build-release build-all rebuild clean bump-build \
-        test test-unit test-ui \
+        test unit-test test-unit test-ui \
         format format-check format-setup \
         run stop restart app-path \
         log log-tail \
@@ -125,24 +142,26 @@ clean: ## Delete build output (build/, DerivedData, dist/) and run xcodebuild cl
 
 # ---------------------------------------------------------------------------
 # Test
+#
+# `make test` runs the UI tests: they are the PRIORITY. They drive the REAL
+# menu-bar app end to end and are the only tests that exercise the actual app.
+# `make unit-test` runs the unit tests — validate them before you're done, but
+# they cover isolated logic, not the running app.
 # ---------------------------------------------------------------------------
-test: test-unit ## Run the unit tests (alias for test-unit)
+test: test-ui ## Run the end-to-end UI tests (alias for test-ui — the PRIORITY)
 
-test-unit: ## Run unit tests (GitHubRelease + ACMenuReconciler)
+unit-test: test-unit ## Run the unit tests (alias for test-unit)
+
+test-unit: ## Run unit tests (isolated logic; validate before done, but secondary to UI tests)
 	$(XCODEBUILD) -scheme $(UNIT_SCHEME) -destination '$(DESTINATION)' $(UNSIGNED_FLAGS) test $(PIPE)
 
-test-ui: ## Run end-to-end UI tests (requires the GUI/Aqua session, not SSH)
-	@if [ -n "$$SSH_CONNECTION" ] || [ "$$(launchctl managername 2>/dev/null)" = "Background" ]; then \
-		echo "error: UI tests must run from the logged-in desktop (Aqua) session, not over SSH."; \
-		echo "       Open Terminal on the Mac's desktop and run 'make test-ui' there."; \
-		exit 1; \
-	fi
+test-ui: ## Run the end-to-end UI tests against the real menu-bar app (the PRIORITY)
 	@command -v vpnutil >/dev/null 2>&1 || { \
 		echo "note: 'vpnutil' not found on PATH. The connect/disconnect toggle test"; \
 		echo "      will be skipped. Install it for full coverage:"; \
 		echo "        brew install timac/vpnstatus/vpnutil"; \
 	}
-	$(XCODEBUILD) -scheme $(UITEST_SCHEME) -destination '$(DESTINATION)' $(UNSIGNED_FLAGS) test $(PIPE)
+	timeout $(UITEST_TIMEOUT) $(XCODEBUILD) -scheme $(UITEST_SCHEME) -destination '$(DESTINATION)' $(UNSIGNED_FLAGS) test $(PIPE)
 
 # ---------------------------------------------------------------------------
 # Format

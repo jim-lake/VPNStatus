@@ -159,6 +159,7 @@ static void PrintUsage(void) {
   fprintf(stderr, "  list           JSON of {name, status} for every NE VPN\n");
   fprintf(stderr, "  status <name>  one line: \"<name> <Status>\"\n");
   fprintf(stderr, "  dump [<name>]  raw ne_session_get_info dictionaries (all VPNs if no name)\n");
+  fprintf(stderr, "  watch <name>...  dump the named VPNs once/second to stdout (Ctrl-C to stop)\n");
   fprintf(stderr, "\n");
   fprintf(stderr, "Built off https://github.com/Timac/VPNStatus\n");
   exit(1);
@@ -207,6 +208,16 @@ static void PrintUsage(void) {
   return kSCNetworkConnectionInvalid;
 }
 
+- (void)refreshStatusOnQueue:(dispatch_queue_t)queue {
+  dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+  ne_session_get_status(_session, queue, ^(ne_session_status_t status) {
+    self.status = status;
+    self.gotStatus = YES;
+    dispatch_semaphore_signal(sema);
+  });
+  dispatch_semaphore_wait(sema, dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC));
+}
+
 @end
 
 #pragma mark - dump
@@ -220,14 +231,25 @@ static void DumpService(Service *service, dispatch_queue_t queue) {
 
   dispatch_semaphore_t sema = dispatch_semaphore_create(0);
 
-  for (int infoType = 0; infoType <= 12; infoType++) {
+  int maxInfo = 12;
+  double timeout = 2.0;
+  const char *maxEnv = getenv("VPNUTIL_MAX_INFO");
+  if (maxEnv) {
+    maxInfo = atoi(maxEnv);
+  }
+  const char *toEnv = getenv("VPNUTIL_INFO_TIMEOUT");
+  if (toEnv) {
+    timeout = atof(toEnv);
+  }
+
+  for (int infoType = 0; infoType <= maxInfo; infoType++) {
     __block xpc_object_t captured = NULL;
     ne_session_get_info(service.session, infoType, queue, ^(xpc_object_t result) {
       captured = result;
       dispatch_semaphore_signal(sema);
     });
 
-    dispatch_semaphore_wait(sema, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC));
+    dispatch_semaphore_wait(sema, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(timeout * NSEC_PER_SEC)));
 
     if (captured != NULL) {
       char *desc = xpc_copy_description(captured);
@@ -273,13 +295,16 @@ int main(int argc, const char *argv[]) {
     BOOL listCommand = [command isEqualToString:@"list"];
     BOOL statusCommand = [command isEqualToString:@"status"];
     BOOL dumpCommand = [command isEqualToString:@"dump"];
+    BOOL watchCommand = [command isEqualToString:@"watch"];
 
-    if (!listCommand && !statusCommand && !dumpCommand) {
+    if (!listCommand && !statusCommand && !dumpCommand && !watchCommand) {
       PrintUsage();
     }
 
-    // status requires a name; dump takes an optional name; list takes none.
+    // status requires a name; dump takes an optional name; watch takes one or
+    // more names; list takes none.
     NSString *vpnName = nil;
+    NSMutableSet<NSString *> *watchNames = nil;
     if (statusCommand) {
       if (argc != 3) {
         PrintUsage();
@@ -287,6 +312,14 @@ int main(int argc, const char *argv[]) {
       vpnName = [NSString stringWithUTF8String:argv[2]];
     } else if (dumpCommand && argc >= 3) {
       vpnName = [NSString stringWithUTF8String:argv[2]];
+    } else if (watchCommand) {
+      if (argc < 3) {
+        PrintUsage();
+      }
+      watchNames = [NSMutableSet set];
+      for (int i = 2; i < argc; i++) {
+        [watchNames addObject:[NSString stringWithUTF8String:argv[i]]];
+      }
     } else if (listCommand && argc != 2) {
       PrintUsage();
     }
@@ -365,6 +398,42 @@ int main(int argc, const char *argv[]) {
       if (!any) {
         fprintf(stderr, "Could not find %s\n", [vpnName UTF8String]);
         return 1;
+      }
+    } else if (watchCommand) {
+      NSMutableArray<Service *> *watched = [NSMutableArray array];
+      for (Service *service in services) {
+        if ([watchNames containsObject:service.name]) {
+          [watched addObject:service];
+        }
+      }
+      if ([watched count] == 0) {
+        fprintf(stderr, "Could not find any of the named VPNs\n");
+        return 1;
+      }
+      if ([watched count] != [watchNames count]) {
+        NSMutableSet *found = [NSMutableSet set];
+        for (Service *s in watched) {
+          [found addObject:s.name];
+        }
+        NSMutableSet *missing = [watchNames mutableCopy];
+        [missing minusSet:found];
+        fprintf(stderr, "Warning: not found: %s\n", [[[missing allObjects] componentsJoinedByString:@", "] UTF8String]);
+      }
+
+      unsigned long sample = 0;
+      while (YES) {
+        sample++;
+        NSString *ts = [NSDateFormatter localizedStringFromDate:[NSDate date]
+                                                      dateStyle:NSDateFormatterNoStyle
+                                                      timeStyle:NSDateFormatterMediumStyle];
+        printf("\n#################### SAMPLE %lu @ %s ####################\n",
+               sample, [ts UTF8String]);
+        for (Service *service in watched) {
+          [service refreshStatusOnQueue:queue];
+          DumpService(service, queue);
+        }
+        fflush(stdout);
+        [NSThread sleepForTimeInterval:1.0];
       }
     }
   }

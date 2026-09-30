@@ -21,6 +21,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)isArmedServiceIdentifier:(NSString *)inServiceIdentifier;
 
 - (void)handleState:(SCNetworkConnectionStatus)inState forService:(ACNEService *)inService;
+- (void)handleAlwaysConnectState:(SCNetworkConnectionStatus)inState wasClean:(BOOL)inWasClean forService:(ACNEService *)inService;
 
 @end
 

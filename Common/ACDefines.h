@@ -60,6 +60,22 @@ extern void ne_session_get_status(ne_session_t session, dispatch_queue_t queue, 
 
 
 //
+// Expose the ne_session_get_info API. Only info type 2 ("extended status") and
+// type 1 (byte/packet counters) return a dictionary; every other type times
+// out. Type 2 carries the disconnect cause after a disconnect: VPN.LastCause
+// (an int64) and, only for an error disconnect, a serialized LastDisconnectError
+// NSError. A clean, user-initiated stop yields LastCause == 1 with NO
+// LastDisconnectError; every involuntary drop (server death, network change,
+// collateral kill, ...) carries a different cause and a LastDisconnectError.
+// See NE_PRIVATE_VPN.md and OSXPrivateSDK ne_session.h.
+//
+#define NESessionInfoTypeExtendedStatus 2
+#define NELastCauseCleanUserStop 1
+typedef void (^ne_session_get_info_block)(xpc_object_t _Nullable result);
+extern void ne_session_get_info(ne_session_t session, int info, dispatch_queue_t queue, ne_session_get_info_block block);
+
+
+//
 // Expose SCNetworkConnectionGetStatusFromNEStatus available in SystemConfiguration
 // See https://opensource.apple.com/source/configd/configd-963/SystemConfiguration.fproj/SCNetworkConnection.c.auto.html
 //

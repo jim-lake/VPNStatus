@@ -48,7 +48,8 @@ baked in) and the code formatter; run `make help` to list targets. You can use
 ```bash
 # Via the Makefile (preferred — handles code-signing flags for you):
 make build        # build the menu bar app (VPNStatus)
-make test         # run the unit tests
+make test         # run the UI tests — THE PRIORITY (drives the real app)
+make unit-test    # run the unit tests (secondary; validate before done)
 make format       # clang-format all Obj-C sources in place
 make format-check # verify formatting (CI-friendly, non-mutating)
 make run          # build + launch the app, leaving it running
@@ -61,6 +62,15 @@ xcodebuild -project VPN.xcodeproj -scheme VPNStatus -configuration Debug build
 # (TEST_HOST = VPNStatus) and runs under the VPNStatus scheme:
 xcodebuild -project VPN.xcodeproj -scheme VPNStatus -destination 'platform=macOS' test
 ```
+
+**The UI tests are the priority.** They drive the REAL menu-bar app end to end
+and are the only tests that exercise the ACTUAL app the user runs — so `make
+test` is wired to them. The unit tests (`make unit-test`) cover isolated logic
+(version parsing, the menu reconciler, row mapping, backoff/preferences,
+auto-connect policy) and are mostly a sanity check on that logic, not the
+running app. Validate the unit tests before you're done, but treat the UI tests
+as the real signal: if you change app behavior, the UI tests are what proves it
+still works.
 
 The `VPNStatusTests` unit bundle covers `GitHubRelease` version comparison
 (Swift), the menu reconciler (`ACMenuReconcilerTests.m`, Obj-C), the per-service
@@ -101,19 +111,16 @@ it opens the live status-item menu, reads the real rows, activates real menu
 actions, and verifies the real effect (VPN connect/disconnect, app quit).
 
 ```bash
-# UI tests — ad-hoc sign the runner (CODE_SIGNING_ALLOWED=YES).
+# UI tests — same unsigned flags as everything else.
 xcodebuild -project VPN.xcodeproj -scheme VPNStatusUITests -destination 'platform=macOS' \
-  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES test
+  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO test
 ```
 
-> **Why `CODE_SIGNING_ALLOWED=YES` for the UI scheme (unlike the app/unit
-> builds):** the stock Xcode `XCTRunner.app` template ships **unsigned**. With
-> `CODE_SIGNING_ALLOWED=NO`, xcodebuild leaves it unsigned and Gatekeeper rejects
-> the runner at launch with a "the application is damaged and can't be run"
-> dialog, so the UI tests never start. Allowing signing lets xcodebuild ad-hoc
-> sign the runner (`CODE_SIGN_IDENTITY="-"`), which launches cleanly. The app and
-> unit tests still build fine with `CODE_SIGNING_ALLOWED=NO`. Wrap UI-test runs in
-> a `timeout` so a wedged run can't block indefinitely.
+> **Signing:** the UI tests build and pass with `CODE_SIGNING_ALLOWED=NO`, the
+> same flags as the app and unit builds (verified end to end on this project —
+> `make test` runs green). There is no need to allow signing for the UI scheme.
+> Wrap UI-test runs in a `timeout` (the `Makefile` does) so a wedged automation
+> run can't block indefinitely.
 
 > **Rule for this repo's docs:** never add a line to any Markdown file (this file,
 > `AUTO_CONNECT.md`, or any other) claiming that tests cannot be run — for any
@@ -138,6 +145,22 @@ The tests:
 - `testClickingServiceTogglesConnection` — activates the service row and confirms
   via `vpnutil` that the real VPN flips state, then flips back
   (Connected → Disconnected → Connected).
+- `testCleanCLIDisconnectDisablesAutoConnect` — the end-to-end proof of the
+  clean-disconnect policy. Connects the local `test-vpn-*` target **through the
+  app** (which arms and, on reaching Connected, commits always-auto-connect),
+  then disconnects it **out of band via `vpnutil stop`** — a clean, user-initiated
+  stop. Asserts the VPN then **stays Disconnected for 30s (no auto-reconnect)**
+  and that the menu row's title tracks the whole sequence
+  (`Connect <name>` → `Disconnect <name>` → back to `Connect <name>`). It
+  establishes a relaunch-safe clean baseline first (terminate app, `vpnutil stop`,
+  clear the service's persisted `AlwaysConnected` flag via PlistBuddy +
+  `killall cfprefsd`, relaunch) because a prior run commits the flag and the app
+  would otherwise auto-reconnect on launch. Skips if `vpnutil` or the
+  `test-vpn-*` target is absent / unreachable. Note it verifies state via the
+  **row title**, not the checkmark: XCUITest does **not** expose the
+  `NSMenuItem` checkmark for popped-up status-menu rows (`isSelected`/`value` are
+  always empty), so the title is the observable indicator — and it fully encodes
+  the checkmark (`Disconnect <name>` == checked, `Connect <name>` == unchecked).
 - `testConnectingRowShowsConnectingTitle` — when a service is Connecting, the
   row is a plain `NSMenuItem` titled `Disconnect <name> - Connecting...` (with a
   checkmark). Reads the row's title **through XCUITest accessibility** and
@@ -168,41 +191,34 @@ the test fails and aborts *there*, before any reads or assertions.
 - Never move past a failed open. Nothing downstream is meaningful if the menu
   isn't really on screen.
 
-**Verify what is ACTUALLY SHOWN via accessibility, not introspection.** To check
-a row's rendered text, read the `NSMenuItem`'s title through XCUITest (the row's
-`title`) and assert on it. Do NOT infer correctness from reading the app's own
-code/state. Every per-service row is now a plain `NSMenuItem` (there is no custom
-menu-item view any more).
+**Verify what the menu actually shows via accessibility, not introspection.** To
+check a row's rendered text, read the `NSMenuItem`'s `title` through XCUITest and
+assert on it, not the app's own state. Every per-service row is a plain
+`NSMenuItem`.
 
-The five original tests:
+How the automation works:
 
-How it works (and why it is built this way — these are hard-won macOS
-constraints, don't "simplify" them away):
-
-1. **Reading a status-item menu works; clicking its rows does not.** After
-   `statusItem().click()` opens the menu, XCUITest can read the rows' stable
-   identifiers/titles. But the popped-up rows are non-hittable (zero-size frames)
-   — `XCUIElement.click()`/`hover()` on a row hangs ~60s on a "menu open"
-   notification that never fires, coordinate clicks miss, and `typeKey` doesn't
-   route to the tracking menu.
-2. **Activating rows uses a UI-test-only hook.** When launched with
-   `UITEST_AUTOMATION=1` (set via `launchEnvironment`), `AppDelegate` observes an
-   `NSDistributedNotification` (`org.timac.VPNStatus.uitest.activate`, object =
-   row identifier) and calls `-[NSMenu performActionForItemAtIndex:]`, which
-   dispatches the row's real target/action exactly as a click would
+1. **Reading a status-item menu works.** After `statusItem().click()` opens the
+   menu, XCUITest can read the rows' stable identifiers/titles. When the menu is
+   genuinely open the rows have real, non-zero on-screen frames and are hittable
+   (verified: a row's `.click()` returns in ~1.3s and dispatches its real
+   action). The catch is a *closed* status menu still lists its rows in the AX
+   tree but with **zero-size frames** (`{0,1080,0,0}`), so you must gate on a
+   real frame — see the HARD GATE above — not mere existence.
+2. **The tests activate rows through a UI-test hook** (not because clicking is
+   impossible — it works — but because the hook is deterministic and needs no
+   on-screen hit-testing). When launched with `UITEST_AUTOMATION=1` (set via
+   `launchEnvironment`), `AppDelegate` observes an `NSDistributedNotification`
+   (`org.timac.VPNStatus.uitest.activate`, object = row identifier) and calls
+   `-[NSMenu performActionForItemAtIndex:]`, which dispatches the row's real
+   target/action exactly as a click would
    (`connectService:`/`disconnectService:`/`doQuit:`). The hook is inert unless
    the env var is set. The menu *contents* the tests assert on are read from the
    live menu by XCUITest; only the *activation* goes through the hook.
-3. **A status-item menu is only visible to XCUITest on the first open per
-   session.** After one open/close cycle, `app.statusItems` returns empty for the
-   rest of the run (the app still runs fine — `app.state == .runningForeground`).
-   So each test opens the menu at most once; the toggle test reads the menu once
-   for the UUID/name, then verifies the *effect* via `vpnutil` instead of
-   re-opening.
-4. **Queries scope to the status item's own menu**, not the global
-   `app.menuItems`: clicking the status item also makes AppKit synthesize a
-   standard app menu bar that contains a *second* `Settings…`/`Quit VPNStatus`.
-5. **Opening the menu is retried** (`app.activate()` + click) because a status
+3. **Queries scope to the status item's own menu** (`statusItem().menuItems`),
+   not the global `app.menuItems`, so a synthesized app menu bar can't introduce
+   an ambiguous second `Settings…`/`Quit VPNStatus` match.
+4. **Opening the menu is retried** (`app.activate()` + click) because a status
    click occasionally registers without opening the menu.
 
 Supporting production changes for testability (in `VPNStatus/AppDelegate.m`):
@@ -266,47 +282,17 @@ conclude "this machine has no VPN" — **stop**. You are using a tool that
 structurally cannot see NE/IKEv2 VPNs. Use brew's `vpnutil` (or ask the app)
 instead.
 
-### Testing pitfalls (mistakes made while getting UI tests working)
+### Testing notes
 
-Recorded so the next agent does not repeat them:
-
-- **The signing error is a red herring.** The build fails with `No signing
-  certificate "Mac Development"` unless you pass the `CODE_SIGNING_*` flags above.
-  The app works unsigned; do not spend time on certificates/provisioning.
-- **Do not fiddle with TCC / Accessibility to "fix" it.** Resetting or trying to
-  add `kTCCServiceAccessibility` grants for the xctrunner (`tccutil reset`,
-  editing `TCC.db`) does not help and actively makes things worse: it triggers
-  repeated permission re-prompts and can leave the automation subsystem wedged so
-  that *every* run re-times-out. `TCC.db` is SIP-protected (read-only to direct
-  writes) anyway. The transient, ad-hoc-signed runner (`com.apple.XCTRunner`)
-  cannot hold a stable grant, so this path is a dead end. Leave TCC alone.
-- **Don't run xcodebuild as root or with a custom `-derivedDataPath` under
-  `sudo`.** Doing so creates root-owned build artifacts (e.g. under `/tmp`) that
-  you then can't clean up without `sudo`. Run as the normal user.
-- **The raw Accessibility API is off-limits. Use XCUITest instead — it is not
-  optional.** To observe or drive the real running app (menu contents, item
-  frames, checkmark gutters, clicks, quit), you MUST use the XCUITest bundle
-  (`VPNStatusUITests`). Do not reach for the raw AX API
-  (`AXUIElementCopyAttributeValue`, `AXUIElementPerformAction`, walking the AX
-  tree, etc.) and do not build ad-hoc CLI probes — a `clang`-built CLI launched
-  from Terminal is never trusted for Accessibility (`AXIsProcessTrusted()` is
-  `false`), so it returns nothing.
-  - **Try to get the XCUITest working. Keep trying.** Fix the test, adjust the
-    in-app `UITEST_AUTOMATION` hook, add whatever the test needs.
-  - **If it fails multiple times, HARD STOP.** State plainly that you could not
-    get it working and stop. Do not work around it: no `tccutil`, no editing
-    `TCC.db` (SIP-protected), no permission re-prompts, no screenshot scraping,
-    no substitute probes. Those are dead ends.
-  - When the test needs the app's internal layout values, expose them from
-    inside the app (e.g. log them via `os_log`, or activate rows through the
-    `UITEST_AUTOMATION` distributed-notification hook). In-process code needs no
-    Accessibility grant.
-- **`.click()`/`.hover()` on a status-menu row hangs the test for ~60s** on the
-  menu-open wait, and coordinate/keyboard approaches don't land on the rows.
-  Don't try to make XCUITest click the popped-up status menu directly.
-- **After the first menu open, `app.statusItems` goes empty.** Don't write a poll
-  loop that re-opens the status menu to observe state; verify the effect another
-  way (the toggle test uses `vpnutil`).
+- **Observe the app through XCUITest, not the app's own state.** To check a
+  row's rendered text, read the `NSMenuItem`'s `title` through XCUITest and
+  assert on it. XCUITest can read a row's title but **not** its checkmark
+  (`isSelected`/`value` are always empty for popped-up status-menu rows), so
+  assert on the title — it encodes the same state (`Disconnect <name>` is
+  checked, `Connect <name>` is unchecked).
+- **Don't run `xcodebuild` as root or under `sudo`** (or with a `sudo`-owned
+  `-derivedDataPath`): it leaves root-owned build artifacts you then can't clean
+  up without `sudo`. Run as the normal user.
 
 ## Architecture overview
 
@@ -402,7 +388,20 @@ notifications, not delegates or callbacks (see "Notifications" below).
   `requestDisconnectServices:` disarm and disable always-auto-connect
   immediately. Because the armed set lives only in memory, quitting the app
   clears it — auto-connect is enabled only by a successful Connect within the
-  same process run. Exercised by `ACAutoConnectPolicyTests`.
+  same process run. It also **disables auto-connect on any clean disconnect**,
+  not just app-initiated ones: observing `kSessionStateChangedNotification`, an
+  always-auto-connect service that reaches **Disconnected** *cleanly*
+  (`handleAlwaysConnectState:wasClean:forService:` with `wasClean == YES`) has
+  its always-auto-connect flag cleared via
+  `ACConnectionManager.setAlwaysAutoConnect:NO`, which also cancels the reconnect
+  backoff loop. "Clean" means a user-initiated stop — detected in `ACNEService`
+  by reading `ne_session_get_info` type 2 on the disconnect event and checking
+  `VPN.LastCause == 1` with no `LastDisconnectError` (see `NE_PRIVATE_VPN.md`),
+  surfaced as `ACNEService.lastDisconnectWasClean`. So disconnecting the VPN from
+  System Settings (or `vpnutil`), or mid-reconnect-loop, turns auto-connect off
+  for that VPN. **Involuntary** drops (server death/abort, network change,
+  collateral kill — any non-1 cause with a `LastDisconnectError`) leave the flag
+  on so `ACConnectionManager` reconnects. Exercised by `ACAutoConnectPolicyTests`.
 
 - **`ACPreferences.{h,m}`** — Singleton wrapper over
   `NSUserDefaults` (domain `org.timac.VPNStatus`). Stores:
@@ -639,8 +638,9 @@ cross the boundary are marked `@objc` (e.g. `UpdateManager`,
      rather than `ne_session_cancel`, or citing the `configd` source a private
      symbol came from.
   2. **A hard-won OS quirk or non-obvious constraint** — e.g. the macOS
-     status-menu automation constraints in the UI tests, or why a status-item
-     menu is only visible to XCUITest on the first open.
+     status-menu automation constraints in the UI tests, or why clicking a
+     popped-up status-menu row hangs XCUITest (so activation goes through the
+     distributed-notification hook instead).
   3. **A genuinely surprising, non-obvious *why*** behind a choice that the code
      itself cannot convey and that the next reader would otherwise get wrong.
 

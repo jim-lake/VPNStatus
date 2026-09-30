@@ -31,13 +31,28 @@ No code signing required; it runs unsigned.
 ./vpnutil status <name>        # one line: "<name> <Status>"
 ./vpnutil dump <name>          # raw ne_session_get_info dictionaries for one VPN
 ./vpnutil dump                 # dump every VPN
+./vpnutil watch <name>...      # dump the named VPNs once/second to stdout (Ctrl-C to stop)
+```
+
+`watch` re-queries status and re-dumps each named VPN every second — useful for
+capturing state/field/cause transitions live (e.g. watching two VPNs while
+disconnecting one). Two env vars tune how much each sample probes so a
+multi-VPN sample fits in ~1s:
+
+- `VPNUTIL_MAX_INFO` (default 12) — highest `infoType` selector to probe. Set to
+  `2` to skip the always-timing-out selectors 3–12.
+- `VPNUTIL_INFO_TIMEOUT` (default 2.0) — per-selector timeout in seconds. Set to
+  e.g. `0.2` for a fast cadence.
+
+```bash
+VPNUTIL_MAX_INFO=2 VPNUTIL_INFO_TIMEOUT=0.2 ./vpnutil watch ares-staging test-vpn-<stamp>
 ```
 
 ## What `dump` shows
 
-It probes `ne_session_get_info(session, infoType, ...)` for `infoType` 0–12 and
-pretty-prints the raw XPC dictionary for each. Empirically on macOS 15/26 only
-two selectors return data:
+It probes `ne_session_get_info(session, infoType, ...)` for `infoType` 0–12
+(configurable via `VPNUTIL_MAX_INFO`) and pretty-prints the raw XPC dictionary
+for each. Empirically on macOS 15/26 only two selectors return data:
 
 - **info type 1** — connection byte/packet statistics
   (`BytesIn/Out`, `PacketsIn/Out`, `ErrorsIn/Out`).

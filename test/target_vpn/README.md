@@ -86,13 +86,49 @@ installing/using the latest cert, and old profiles can just be deleted. Run
 
 ## Testing start/stop control
 
-- `./vpn-target.sh stop` takes the server offline. A connected client can no
-  longer reach it (good for testing VPNStatus's reconnect/backoff and the
-  `Connecting…` state).
-- `./vpn-target.sh start` brings it back on the **same** LAN IP (DHCP lease is
-  sticky), so the installed profile keeps working. If DHCP ever hands out a
-  different IP, re-running provisioning rebuilds the PKI/profile for the new IP
-  (the old profile would then need reinstalling).
+> ## ✅ `stop` / `start` now PRESERVES the PKI and installed profile
+>
+> As of the persisted-build-stamp fix, **rebooting the VM keeps the same certs
+> and the same profile name**, so `./vpn-target.sh stop` + `start` (and host
+> reboots) no longer break the profile you installed on macOS — it reconnects
+> cleanly afterward. This means the VM can be stopped/started freely for testing
+> without reinstalling anything.
+>
+> **How it works:** `provision.sh` mints the timestamped build stamp **once** and
+> persists it in the VM at `/etc/vpn-target/build_stamp`; every later boot reads
+> that file back and reuses the same stamp, so the profile name / client_id /
+> swanctl `remote.id` stay stable. `ike-setup.sh` is already idempotent
+> (`client_pki_exists || build_client_pki`), so with a stable stamp it finds the
+> existing certs and does **not** regenerate them. (Verified: CA SHA-256
+> fingerprint is byte-for-byte identical across a full stop/start.)
+>
+> ### The ONE case that still regenerates certs — a fresh build stamp
+>
+> A new stamp (new profile name + new CA, requiring a profile reinstall) is
+> minted **only** when there is no persisted stamp to reuse, i.e.:
+> - **First ever provision** of a newly created VM (expected).
+> - **`./vpn-target.sh delete`** then `start` — delete destroys the VM and the
+>   `/etc/vpn-target/build_stamp` with it, so the next provision starts fresh.
+> - Someone manually removes `/etc/vpn-target/build_stamp` inside the VM.
+>
+> There is also one **certs-only** rebuild that keeps the same stamp/profile name:
+> if the bridged **DHCP IP changes** across a reboot, `client_pki_exists` sees the
+> server cert's IP SAN no longer matches and rebuilds the PKI **under the same
+> profile name**. Because macOS pins the first-installed identity for a given
+> name, that reused name would then present a stale client cert — so on the rare
+> event the VM's LAN IP changes, reinstall the profile. The DHCP lease is sticky,
+> so this is uncommon.
+
+- `./vpn-target.sh stop` powers the VM off (server goes offline — good for
+  testing reconnect/backoff and the `Connecting…` state). `./vpn-target.sh start`
+  brings it back on the **same** LAN IP with the **same** certs/profile, so a
+  connected client reconnects without any reinstall.
+- To make the server unreachable **without even stopping the VM** (fastest, and
+  obviously cert-safe), drop the daemon or its ports from inside the guest:
+  ```sh
+  limactl shell vpn-target sudo systemctl stop strongswan     # server "gone"
+  limactl shell vpn-target sudo systemctl start strongswan    # back, same certs
+  ```
 
 ## Verify real VPN state independently
 
